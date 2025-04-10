@@ -15,21 +15,22 @@ import {
   useTheme,
   alpha,
   Fade,
+  Slider,
   Chip,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import {
-  BarChart,
+  ComposedChart,
   Bar,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
-  LabelList,
 } from "recharts";
 
 import OpportunityList from "./OpportunityList";
@@ -43,6 +44,36 @@ import {
 } from "../utils/dataUtils";
 
 const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
+  const [periodRange, setPeriodRange] = useState([0, 100]);
+
+  const prepareDateRange = () => {
+    if (!data || data.length === 0) return;
+
+    // Sort data by creation date
+    const sortedData = [...data].sort(
+      (a, b) => new Date(a["Creation Date"]) - new Date(b["Creation Date"])
+    );
+
+    const firstDate = new Date(sortedData[0]["Creation Date"]);
+    const lastDate = new Date(
+      sortedData[sortedData.length - 1]["Creation Date"]
+    );
+    const totalDuration = lastDate.getTime() - firstDate.getTime();
+
+    // Calculate start and end dates based on slider
+    const start = new Date(
+      firstDate.getTime() + (totalDuration * periodRange[0]) / 100
+    );
+    const end = new Date(
+      firstDate.getTime() + (totalDuration * periodRange[1]) / 100
+    );
+
+    setDateRange([start, end]);
+  };
+
+  const handlePeriodChange = (event, newValue) => {
+    setPeriodRange(newValue);
+  };
   const [yoyBookings, setYoyBookings] = useState([]);
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
   const [totalBookings, setTotalBookings] = useState(0);
@@ -56,23 +87,215 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   const [newLosses, setNewLosses] = useState([]);
   const [analysisTab, setAnalysisTab] = useState(0);
   const [years, setYears] = useState([]);
+  const [cumulativeData, setCumulativeData] = useState([]);
 
   const theme = useTheme();
 
-  // Custom colors for charts
+  // More distinct color palette
   const COLORS = [
-    theme.palette.primary.main,
-    theme.palette.secondary.main,
-    theme.palette.success.main,
-    theme.palette.warning.main,
-    theme.palette.info.main,
-    theme.palette.error.main,
+    {
+      bar: "#1E88E5", // Vibrant Blue
+      line: "#0D47A1", // Dark Blue
+      opacity: 0.7,
+    },
+    {
+      bar: "#D81B60", // Vibrant Pink
+      line: "#880E4F", // Dark Maroon
+      opacity: 0.7,
+    },
+    {
+      bar: "#FFC107", // Amber
+      line: "#FF6F00", // Dark Orange
+      opacity: 0.7,
+    },
+    {
+      bar: "#004D40", // Dark Teal
+      line: "#00251A", // Almost Black Teal
+      opacity: 0.7,
+    },
+    {
+      bar: "#6A1B9A", // Deep Purple
+      line: "#4A148C", // Darker Purple
+      opacity: 0.7,
+    },
   ];
+
+  // Update date analysis method
+  const updateDateAnalysis = () => {
+    if (!data || !dateRange[0] || !dateRange[1]) return;
+
+    const startDate = dateRange[0];
+    const endDate = dateRange[1];
+
+    console.log("Updating Date Analysis:");
+    console.log("Start Date:", startDate);
+    console.log("End Date:", endDate);
+
+    // Get new opportunities, wins, and losses within the date range
+    const newOpps = getNewOpportunities(data, startDate, endDate);
+    const wins = getNewWins(data, startDate, endDate);
+    const losses = getNewLosses(data, startDate, endDate);
+
+    console.log("New Opportunities:", newOpps.length);
+    console.log("Wins:", wins.length);
+    console.log("Losses:", losses.length);
+
+    setNewOpportunities(newOpps);
+    setNewWins(wins);
+    setNewLosses(losses);
+
+    // Update filtered opportunities based on current tab
+    if (analysisTab === 0) {
+      setFilteredOpportunities(wins);
+    } else if (analysisTab === 1) {
+      setFilteredOpportunities(losses);
+    }
+  };
+
+  // Calculate cumulative data for years
+  const calculateCumulativeTotals = (bookingsData) => {
+    return bookingsData.map((monthData, index) => {
+      const cumulativeMonth = { ...monthData };
+
+      // Calculate cumulative totals for each year
+      years.forEach((year) => {
+        // Sum all previous months' values for this year
+        const cumulativeValue = bookingsData
+          .slice(0, index + 1)
+          .reduce((sum, prevMonth) => {
+            return sum + (prevMonth[year] || 0);
+          }, 0);
+
+        // Add cumulative value for this year
+        cumulativeMonth[`${year}_cumulative`] = cumulativeValue;
+      });
+
+      return cumulativeMonth;
+    });
+  };
+
+  const handleChartClick = (data) => {
+    if (!data || !data.activePayload || data.activePayload.length === 0) return;
+
+    const clickedItem = data.activePayload[0].payload;
+    const clickedKey = data.activePayload[0].dataKey;
+
+    // Defensive parsing of the clicked key
+    const yearMatch = String(clickedKey).match(/^(\d+)(_cumulative)?$/);
+
+    if (!yearMatch) return;
+
+    const year = yearMatch[1];
+
+    // Get the opportunities for this month and year
+    const opps = clickedItem[`${year}Opps`] || [];
+
+    if (opps.length > 0) {
+      setFilteredOpportunities(opps);
+    }
+  };
+
+  const handleDateChange = (index, date) => {
+    const newDateRange = [...dateRange];
+    newDateRange[index] = date;
+    setDateRange(newDateRange);
+  };
+
+  const handleAnalysisTabChange = (event, newValue) => {
+    setAnalysisTab(newValue);
+
+    // Update filtered opportunities based on tab
+    if (newValue === 0) {
+      // Wins (booked opportunities)
+      setFilteredOpportunities(newWins);
+    } else if (newValue === 1) {
+      // Lost opportunities
+      setFilteredOpportunities(newLosses);
+    }
+  };
+  // Custom tooltip for charts
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <Card
+          sx={{
+            p: 1.5,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600}>
+            {label}
+          </Typography>
+          {payload.map((entry, index) => {
+            // Defensive check for dataKey
+            const dataKey = String(entry.dataKey || "");
+
+            // Check for cumulative using regex
+            const isCumulative = dataKey.includes("_cumulative");
+            const year = dataKey.replace("_cumulative", "");
+
+            // Skip entries that don't look like valid year data
+            if (!/^\d+(_cumulative)?$/.test(dataKey)) return null;
+
+            return (
+              <Box key={`item-${index}`} sx={{ mt: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      backgroundColor: entry.color,
+                      borderRadius: "50%",
+                      mr: 1,
+                    }}
+                  />
+                  <Typography variant="body2" sx={{ mr: 1 }}>
+                    {isCumulative ? "Cumulative " : ""}
+                    {year}:
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(entry.value || 0)}
+                  </Typography>
+                </Box>
+                {!isCumulative && (
+                  <Typography variant="caption" color="text.secondary">
+                    {payload[0].payload[`${year}Count`] || 0} opportunities
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
+        </Card>
+      );
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    // Prepare date range whenever period slider changes
+    prepareDateRange();
+  }, [periodRange, data]);
+
+  useEffect(() => {
+    // Trigger date analysis when date range is updated
+    if (dateRange[0] && dateRange[1]) {
+      updateDateAnalysis();
+    }
+  }, [dateRange]);
 
   useEffect(() => {
     if (!data || loading) return;
 
-    // Reset filtered opportunities when data changes
+    // Reset filtered opportunities
     setFilteredOpportunities(data);
 
     // Calculate total bookings revenue
@@ -85,8 +308,9 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     setTotalBookings(total);
 
     // Calculate monthly yearly bookings for the bar chart
+    const bookedData = data.filter((item) => item["Status"] === 14);
     const monthly = getMonthlyYearlyTotals(
-      data,
+      bookedData, // Use only booked opportunities
       "Creation Date",
       "Gross Revenue"
     );
@@ -96,6 +320,10 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     // Format data for YoY comparison
     const yoyData = formatYearOverYearData(monthly);
     setYoyBookings(yoyData);
+
+    // Calculate cumulative data
+    const cumData = calculateCumulativeTotals(yoyData);
+    setCumulativeData(cumData);
 
     // Group data by service line for pie chart
     const byServiceLine = [];
@@ -127,131 +355,9 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     byServiceLine.sort((a, b) => b.value - a.value);
     setBookingsByServiceLine(byServiceLine);
 
-    // Calculate new opportunities, wins, and losses for the selected date range
+    // Calculate new opportunities, wins, and losses
     updateDateAnalysis();
   }, [data, loading]);
-
-  // Update analysis when date range changes
-  const updateDateAnalysis = () => {
-    if (!data || !dateRange[0] || !dateRange[1]) return;
-
-    const startDate = dateRange[0];
-    const endDate = dateRange[1];
-
-    // Get new opportunities, wins, and losses within the date range
-    const newOpps = getNewOpportunities(data, startDate, endDate);
-    const wins = getNewWins(data, startDate, endDate);
-    const losses = getNewLosses(data, startDate, endDate);
-
-    setNewOpportunities(newOpps);
-    setNewWins(wins);
-    setNewLosses(losses);
-
-    // Update filtered opportunities based on current tab
-    if (analysisTab === 0) {
-      setFilteredOpportunities(newOpps);
-    } else if (analysisTab === 1) {
-      setFilteredOpportunities(wins);
-    } else if (analysisTab === 2) {
-      setFilteredOpportunities(losses);
-    }
-  };
-
-  const handleChartClick = (data) => {
-    if (!data || !data.activePayload || data.activePayload.length === 0) return;
-
-    const clickedItem = data.activePayload[0].payload;
-    const clickedYear = data.activePayload[0].dataKey;
-
-    // Only process if it's a year property (not month, monthName, etc)
-    if (!isNaN(parseInt(clickedYear))) {
-      // Get the opportunities for this month and year
-      const opps = clickedItem[`${clickedYear}Opps`] || [];
-
-      if (opps.length > 0) {
-        setFilteredOpportunities(opps);
-      }
-    }
-  };
-
-  const handleDateChange = (index, date) => {
-    const newDateRange = [...dateRange];
-    newDateRange[index] = date;
-    setDateRange(newDateRange);
-  };
-
-  const handleAnalysisTabChange = (event, newValue) => {
-    setAnalysisTab(newValue);
-
-    // Update filtered opportunities based on tab
-    if (newValue === 0) {
-      setFilteredOpportunities(newOpportunities);
-    } else if (newValue === 1) {
-      setFilteredOpportunities(newWins);
-    } else if (newValue === 2) {
-      setFilteredOpportunities(newLosses);
-    } else {
-      setFilteredOpportunities(data);
-    }
-  };
-
-  // Custom tooltip for charts
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <Card
-          sx={{
-            p: 1.5,
-            backgroundColor: "white",
-            border: "1px solid",
-            borderColor: alpha(theme.palette.primary.main, 0.1),
-            boxShadow: theme.shadows[3],
-            borderRadius: 2,
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={600}>
-            {label}
-          </Typography>
-          {payload.map((entry, index) => {
-            // Skip non-year entries
-            if (isNaN(parseInt(entry.dataKey))) return null;
-
-            return (
-              <Box key={`item-${index}`} sx={{ mt: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
-                  <Box
-                    sx={{
-                      width: 12,
-                      height: 12,
-                      backgroundColor: entry.color,
-                      borderRadius: "50%",
-                      mr: 1,
-                    }}
-                  />
-                  <Typography variant="body2" sx={{ mr: 1 }}>
-                    {entry.dataKey}:
-                  </Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(entry.value)}
-                  </Typography>
-                </Box>
-                <Typography variant="caption" color="text.secondary">
-                  {payload[0].payload[`${entry.dataKey}Count`] || 0}{" "}
-                  opportunities
-                </Typography>
-              </Box>
-            );
-          })}
-        </Card>
-      );
-    }
-    return null;
-  };
 
   if (loading) {
     return (
@@ -272,93 +378,285 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     <Fade in={!loading} timeout={500}>
       <Grid container spacing={3}>
         {/* Summary Cards */}
-        <Grid item xs={12} md={6}>
-          <Card
-            sx={{
-              height: "100%",
-              borderRadius: 3,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" gutterBottom fontWeight={600}>
-                Total Bookings
-              </Typography>
-              <Typography
-                variant="h3"
-                color="primary.main"
-                fontWeight={700}
-                sx={{ mb: 1 }}
-              >
-                {new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(totalBookings)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {data.length} booked opportunities
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+        <Grid container spacing={3}>
+          {/* Total Bookings Card */}
+          <Grid item xs={12} md={4}>
+            <Card
+              sx={{
+                height: "100%",
+                borderRadius: 3,
+                transition: "all 0.3s",
+                "&:hover": {
+                  boxShadow: 6,
+                  transform: "translateY(-4px)",
+                },
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Total Bookings 2025
+                </Typography>
+                <Typography
+                  variant="h3"
+                  color="primary.main"
+                  fontWeight={700}
+                  sx={{ mb: 1 }}
+                >
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    sumBy(
+                      data.filter(
+                        (item) =>
+                          item["Status"] === 14 &&
+                          new Date(item["Creation Date"]).getFullYear() === 2025
+                      ),
+                      "Gross Revenue"
+                    )
+                  )}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {
+                    data.filter(
+                      (item) =>
+                        item["Status"] === 14 &&
+                        new Date(item["Creation Date"]).getFullYear() === 2025
+                    ).length
+                  }{" "}
+                  booked opportunities
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, display: "block" }}
+                >
+                  2024 Total:{" "}
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    sumBy(
+                      data.filter(
+                        (item) =>
+                          item["Status"] === 14 &&
+                          new Date(item["Creation Date"]).getFullYear() === 2024
+                      ),
+                      "Gross Revenue"
+                    )
+                  )}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Card
-            sx={{
-              height: "100%",
-              borderRadius: 3,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" gutterBottom fontWeight={600}>
-                Average Booking Size
-              </Typography>
-              <Typography
-                variant="h3"
-                color="secondary.main"
-                fontWeight={700}
-                sx={{ mb: 1 }}
-              >
-                {new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(data.length > 0 ? totalBookings / data.length : 0)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Range:{" "}
-                {new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(
-                  Math.min(...data.map((opp) => opp["Gross Revenue"] || 0))
-                )}{" "}
-                -
-                {new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(
-                  Math.max(...data.map((opp) => opp["Gross Revenue"] || 0))
-                )}
-              </Typography>
-            </CardContent>
-          </Card>
+          {/* Total Lost Opportunities Card */}
+          <Grid item xs={12} md={4}>
+            <Card
+              sx={{
+                height: "100%",
+                borderRadius: 3,
+                transition: "all 0.3s",
+                "&:hover": {
+                  boxShadow: 6,
+                  transform: "translateY(-4px)",
+                },
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Total Lost 2025
+                </Typography>
+                <Typography
+                  variant="h3"
+                  color="error.main"
+                  fontWeight={700}
+                  sx={{ mb: 1 }}
+                >
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    sumBy(
+                      data.filter(
+                        (item) =>
+                          item["Status"] === 15 &&
+                          new Date(item["Lost Date"]).getFullYear() === 2025
+                      ),
+                      "Gross Revenue"
+                    )
+                  )}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {
+                    data.filter(
+                      (item) =>
+                        item["Status"] === 15 &&
+                        new Date(item["Lost Date"]).getFullYear() === 2025
+                    ).length
+                  }{" "}
+                  lost opportunities
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, display: "block" }}
+                >
+                  2024 Total:{" "}
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    sumBy(
+                      data.filter(
+                        (item) =>
+                          item["Status"] === 15 &&
+                          new Date(item["Lost Date"]).getFullYear() === 2024
+                      ),
+                      "Gross Revenue"
+                    )
+                  )}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Average Booking Size Card */}
+          <Grid item xs={12} md={4}>
+            <Card
+              sx={{
+                height: "100%",
+                borderRadius: 3,
+                transition: "all 0.3s",
+                "&:hover": {
+                  boxShadow: 6,
+                  transform: "translateY(-4px)",
+                },
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Average Booking Size 2025
+                </Typography>
+                <Typography
+                  variant="h3"
+                  color="secondary.main"
+                  fontWeight={700}
+                  sx={{ mb: 1 }}
+                >
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    data.filter(
+                      (item) =>
+                        item["Status"] === 14 &&
+                        new Date(item["Creation Date"]).getFullYear() === 2025
+                    ).length > 0
+                      ? sumBy(
+                          data.filter(
+                            (item) =>
+                              item["Status"] === 14 &&
+                              new Date(item["Creation Date"]).getFullYear() ===
+                                2025
+                          ),
+                          "Gross Revenue"
+                        ) /
+                          data.filter(
+                            (item) =>
+                              item["Status"] === 14 &&
+                              new Date(item["Creation Date"]).getFullYear() ===
+                                2025
+                          ).length
+                      : 0
+                  )}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Range:{" "}
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    Math.min(
+                      ...data
+                        .filter(
+                          (item) =>
+                            item["Status"] === 14 &&
+                            new Date(item["Creation Date"]).getFullYear() ===
+                              2025
+                        )
+                        .map((opp) => opp["Gross Revenue"] || 0)
+                    )
+                  )}{" "}
+                  -
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    Math.max(
+                      ...data
+                        .filter(
+                          (item) =>
+                            item["Status"] === 14 &&
+                            new Date(item["Creation Date"]).getFullYear() ===
+                              2025
+                        )
+                        .map((opp) => opp["Gross Revenue"] || 0)
+                    )
+                  )}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, display: "block" }}
+                >
+                  2024 Avg:{" "}
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "EUR",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(
+                    data.filter(
+                      (item) =>
+                        item["Status"] === 14 &&
+                        new Date(item["Creation Date"]).getFullYear() === 2024
+                    ).length > 0
+                      ? sumBy(
+                          data.filter(
+                            (item) =>
+                              item["Status"] === 14 &&
+                              new Date(item["Creation Date"]).getFullYear() ===
+                                2024
+                          ),
+                          "Gross Revenue"
+                        ) /
+                          data.filter(
+                            (item) =>
+                              item["Status"] === 14 &&
+                              new Date(item["Creation Date"]).getFullYear() ===
+                                2024
+                          ).length
+                      : 0
+                  )}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
 
         {/* Monthly Bookings Chart */}
@@ -374,22 +672,24 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight={600}>
-              Monthly Bookings Year-over-Year
+              Monthly Bookings Year-over-Year with Cumulative Trend
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Click on bars to see opportunities for that month and year
+              Click on bars or lines to see opportunities
             </Typography>
             <ResponsiveContainer width="100%" height="90%">
-              <BarChart
-                data={yoyBookings}
+              <ComposedChart
+                data={cumulativeData}
                 margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
                 onClick={handleChartClick}
-                barSize={30}
-                barGap={2}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="monthName" axisLine={false} tickLine={false} />
+
+                {/* Left Y-Axis for Monthly Values */}
                 <YAxis
+                  yAxisId="monthly"
+                  orientation="left"
                   tickFormatter={(value) =>
                     new Intl.NumberFormat("en-US", {
                       style: "currency",
@@ -402,18 +702,56 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                   axisLine={false}
                   tickLine={false}
                 />
+
+                {/* Right Y-Axis for Cumulative Values */}
+                <YAxis
+                  yAxisId="cumulative"
+                  orientation="right"
+                  tickFormatter={(value) =>
+                    new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      notation: "compact",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(value)
+                  }
+                  axisLine={false}
+                  tickLine={false}
+                />
+
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
-                {years.map((year, index) => (
-                  <Bar
-                    key={year}
-                    dataKey={`${year}`}
-                    name={`${year}`}
-                    fill={COLORS[index % COLORS.length]}
-                    radius={[4, 4, 0, 0]}
-                  />
-                ))}
-              </BarChart>
+
+                {/* Bars and Lines for each year */}
+                {years.map((year, index) => {
+                  const colorSet = COLORS[index % COLORS.length];
+                  return (
+                    <React.Fragment key={year}>
+                      {/* Monthly Bars */}
+                      <Bar
+                        yAxisId="monthly"
+                        dataKey={year}
+                        name={`${year} Monthly`}
+                        fill={colorSet.bar}
+                        fillOpacity={colorSet.opacity}
+                        stackId={`${year}-stack`}
+                      />
+
+                      {/* Cumulative Line */}
+                      <Line
+                        yAxisId="cumulative"
+                        type="monotone"
+                        dataKey={`${year}_cumulative`}
+                        name={`${year} Cumulative`}
+                        stroke={colorSet.line}
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+              </ComposedChart>
             </ResponsiveContainer>
           </Paper>
         </Grid>
@@ -432,46 +770,40 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
             <Typography variant="h6" gutterBottom fontWeight={600}>
               Period Analysis
             </Typography>
-            <Box sx={{ mb: 3 }}>
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={4}>
-                    <DatePicker
-                      label="From Date"
-                      value={dateRange[0]}
-                      onChange={(date) => handleDateChange(0, date)}
-                      slotProps={{
-                        textField: {
-                          fullWidth: true,
-                          size: "small",
-                        },
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <DatePicker
-                      label="To Date"
-                      value={dateRange[1]}
-                      onChange={(date) => handleDateChange(1, date)}
-                      slotProps={{
-                        textField: {
-                          fullWidth: true,
-                          size: "small",
-                        },
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Button
-                      variant="contained"
-                      onClick={updateDateAnalysis}
-                      fullWidth
-                    >
-                      Analyze Period
-                    </Button>
-                  </Grid>
-                </Grid>
-              </LocalizationProvider>
+            <Box sx={{ px: 4, mb: 4 }}>
+              <Slider
+                value={periodRange}
+                onChange={handlePeriodChange}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(value) => {
+                  if (!data || data.length === 0) return "";
+                  const sortedData = [...data].sort(
+                    (a, b) =>
+                      new Date(a["Creation Date"]) -
+                      new Date(b["Creation Date"])
+                  );
+                  const firstDate = new Date(sortedData[0]["Creation Date"]);
+                  const lastDate = new Date(
+                    sortedData[sortedData.length - 1]["Creation Date"]
+                  );
+                  const totalDuration =
+                    lastDate.getTime() - firstDate.getTime();
+                  const selectedDate = new Date(
+                    firstDate.getTime() + (totalDuration * value) / 100
+                  );
+                  return selectedDate.toLocaleDateString();
+                }}
+              />
+              <Box
+                sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {dateRange[0] ? dateRange[0].toLocaleDateString() : "Start"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {dateRange[1] ? dateRange[1].toLocaleDateString() : "End"}
+                </Typography>
+              </Box>
             </Box>
 
             <Divider sx={{ mb: 2 }} />
@@ -483,7 +815,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
               variant="fullWidth"
               sx={{ mb: 2 }}
             >
-              <Tab label={`New (${newOpportunities.length})`} />
               <Tab label={`Wins (${newWins.length})`} />
               <Tab label={`Lost (${newLosses.length})`} />
             </Tabs>
@@ -499,42 +830,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     }}
                   >
                     <Typography variant="subtitle2" fontWeight={600}>
-                      New Opportunities in Period
-                    </Typography>
-                    <Box>
-                      <Chip
-                        label={`${newOpportunities.length} opportunities`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                        sx={{ mr: 1 }}
-                      />
-                      <Chip
-                        label={new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(sumBy(newOpportunities, "Gross Revenue"))}
-                        size="small"
-                        color="primary"
-                      />
-                    </Box>
-                  </Box>
-                </Box>
-              )}
-
-              {analysisTab === 1 && (
-                <Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      New Wins in Period
+                      Won Opportunities in Period
                     </Typography>
                     <Box>
                       <Chip
@@ -559,7 +855,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 </Box>
               )}
 
-              {analysisTab === 2 && (
+              {analysisTab === 1 && (
                 <Box>
                   <Box
                     sx={{
@@ -569,7 +865,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     }}
                   >
                     <Typography variant="subtitle2" fontWeight={600}>
-                      New Losses in Period
+                      Lost Opportunities in Period
                     </Typography>
                     <Box>
                       <Chip
