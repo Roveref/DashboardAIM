@@ -275,10 +275,40 @@ export const getNewWins = (data, startDate, endDate) => {
  * @returns {Array} Filtered opportunities
  */
 export const getNewLosses = (data, startDate, endDate) => {
-  return data.filter((item) => {
-    if (!item["Lost Date"] || item["Lost Date"] === "-") return false;
+  console.log("Getting Lost Opportunities:");
+  console.log("Total data length:", data.length);
+  console.log("Date Range:", startDate, endDate);
+
+  const lostOpportunities = data.filter((item) => {
+    // Log each item's details
+    console.log("Checking opportunity:", {
+      opportunityId: item["Opportunity ID"],
+      status: item["Status"],
+      lostDate: item["Lost Date"],
+    });
+
+    // Check if the opportunity is lost (status 15)
+    if (item["Status"] !== 15) {
+      console.log("Not a lost opportunity (status not 15)");
+      return false;
+    }
+
+    // Check if lost date exists and is a valid date
+    if (!item["Lost Date"] || item["Lost Date"] === "-") {
+      console.log("No valid lost date");
+      return false;
+    }
 
     const lostDate = new Date(item["Lost Date"]);
-    return lostDate >= startDate && lostDate <= endDate;
+
+    // Check if lost date is within the specified range
+    const isInRange = lostDate >= startDate && lostDate <= endDate;
+
+    console.log("Is in date range:", isInRange);
+
+    return isInRange;
   });
+
+  console.log("Lost opportunities found:", lostOpportunities.length);
+  return lostOpportunities;
 };
