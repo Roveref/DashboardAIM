@@ -12,6 +12,7 @@ import {
   alpha,
   Fade,
   Chip,
+  Stack,
 } from "@mui/material";
 import {
   BarChart,
@@ -25,10 +26,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Sankey,
-  Funnel,
-  FunnelChart,
-  LabelList,
   Label,
 } from "recharts";
 
@@ -43,11 +40,19 @@ const statusMap = {
   11: "11 - Final Negotiation",
 };
 
+// Define all possible statuses to ensure complete representation
+const ALL_STATUSES = [
+  { status: "1 - New Lead", statusNumber: 1 },
+  { status: "4 - Go Approved", statusNumber: 4 },
+  { status: "6 - Proposal Delivered", statusNumber: 6 },
+  { status: "11 - Final Negotiation", statusNumber: 11 },
+];
+
 const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   const [pipelineByStatus, setPipelineByStatus] = useState([]);
   const [pipelineByServiceLine, setPipelineByServiceLine] = useState([]);
-  const [funnelData, setFunnelData] = useState([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [allocatedRevenue, setAllocatedRevenue] = useState(0);
   const [filteredOpportunities, setFilteredOpportunities] = useState([]);
   const theme = useTheme();
   const [isAllocated, setIsAllocated] = useState(false);
@@ -71,56 +76,85 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     setFilteredOpportunities(data);
 
     // Check if we're using allocated revenue
+    const hasAllocatedData =
+      data.length > 0 &&
+      data.some(
+        (item) =>
+          item["Allocated Gross Revenue"] !== undefined ||
+          (item["Allocation Percentage"] !== undefined &&
+            item["Gross Revenue"] !== undefined)
+      );
+
     const isUsingAllocation =
-      data.length > 0 && data[0] && data[0]["Is Allocated"];
+      hasAllocatedData && data[0] && data[0]["Allocated Service Line"];
     setIsAllocated(isUsingAllocation);
 
-    if (isUsingAllocation && data[0]["Allocated Service Line"]) {
-      setAllocatedServiceLine(data[0]["Allocated Service Line"]);
+    // Find the service line being allocated
+    if (isUsingAllocation) {
+      const allocatedItem = data.find(
+        (item) =>
+          item["Allocated Service Line"] ||
+          item["Allocation Percentage"] !== undefined
+      );
+
+      if (allocatedItem && allocatedItem["Allocated Service Line"]) {
+        setAllocatedServiceLine(allocatedItem["Allocated Service Line"]);
+      } else if (allocatedItem && allocatedItem["Service Line 1"]) {
+        setAllocatedServiceLine(allocatedItem["Service Line 1"]);
+      } else {
+        setAllocatedServiceLine("");
+      }
     } else {
       setAllocatedServiceLine("");
     }
 
-    // Calculate total pipeline revenue (using allocated revenue if available)
+    // Calculate both total pipeline revenue and allocated revenue
     let total = 0;
-    if (isUsingAllocation) {
-      // Sum up the allocated revenue
-      total = data.reduce((sum, item) => {
-        return (
-          sum +
-          (typeof item["Allocated Gross Revenue"] === "number"
-            ? item["Allocated Gross Revenue"]
-            : 0)
-        );
-      }, 0);
-    } else {
-      // Use regular gross revenue
-      total = data.reduce((sum, item) => {
-        return (
-          sum +
-          (typeof item["Gross Revenue"] === "number"
-            ? item["Gross Revenue"]
-            : 0)
-        );
-      }, 0);
-    }
+    let allocated = 0;
+
+    data.forEach((item) => {
+      const grossRevenue =
+        typeof item["Gross Revenue"] === "number" ? item["Gross Revenue"] : 0;
+      total += grossRevenue;
+
+      const allocatedGrossRevenue =
+        typeof item["Allocated Gross Revenue"] === "number"
+          ? item["Allocated Gross Revenue"]
+          : 0;
+      allocated += allocatedGrossRevenue;
+    });
 
     setTotalRevenue(total);
+    setAllocatedRevenue(allocated);
 
     // Use the appropriate revenue field for all charts
     const revenueField = isUsingAllocation
       ? "Allocated Gross Revenue"
       : "Gross Revenue";
 
-    // Group data by status for bar chart
-    const byStatus = Object.entries(groupDataBy(data, "Status"))
-      .map(([status, opportunities]) => ({
-        status: statusMap[status] || `Status ${status}`,
-        value: sumBy(opportunities, revenueField),
+    // Modified to ensure ALL statuses are represented
+    const byStatus = ALL_STATUSES.map((statusInfo) => {
+      // Find opportunities for this specific status
+      const opportunities = data.filter(
+        (item) => item["Status"] === statusInfo.statusNumber
+      );
+
+      // Calculate total revenue for this status
+      const value = opportunities.reduce((sum, item) => {
+        const revenue = isUsingAllocation
+          ? item["Allocated Gross Revenue"] || 0
+          : item["Gross Revenue"] || 0;
+        return sum + revenue;
+      }, 0);
+
+      return {
+        status: statusInfo.status,
+        value: value,
         count: opportunities.length,
-        statusNumber: parseInt(status, 10),
-      }))
-      .sort((a, b) => a.statusNumber - b.statusNumber);
+        statusNumber: statusInfo.statusNumber,
+      };
+    });
+
     setPipelineByStatus(byStatus);
 
     // Group data by service line for pie chart
@@ -132,17 +166,6 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       }))
       .sort((a, b) => b.value - a.value); // Sort by value descending
     setPipelineByServiceLine(byServiceLine);
-
-    // Create funnel data
-    const funnel = Object.entries(groupDataBy(data, "Status"))
-      .map(([status, opportunities]) => ({
-        name: statusMap[status] || `Status ${status}`,
-        value: opportunities.length,
-        revenue: sumBy(opportunities, revenueField),
-        statusNumber: parseInt(status, 10),
-      }))
-      .sort((a, b) => a.statusNumber - b.statusNumber);
-    setFunnelData(funnel);
   }, [data, loading]);
 
   const handleChartClick = (data, index, event) => {
@@ -168,6 +191,14 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       setFilteredOpportunities(filtered);
     }
   };
+
+  // Calculate allocation percentage, handling the 100% case
+  const allocationPercentage =
+    totalRevenue > 0 && isAllocated
+      ? Math.abs((allocatedRevenue / totalRevenue) * 100)
+      : isAllocated
+      ? 100
+      : 0; // If we have allocation but can't calculate, assume 100%
 
   // Custom tooltip for revenue charts
   const CustomTooltip = ({ active, payload, label }) => {
@@ -267,34 +298,98 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     color="text.secondary"
                     gutterBottom
                   >
-                    Pipeline Total{" "}
-                    {isAllocated && `(${allocatedServiceLine} allocation)`}
+                    Pipeline Overview
                   </Typography>
-                  <Typography
-                    variant="h4"
-                    component="div"
-                    fontWeight={700}
-                    sx={{ mb: 1 }}
-                  >
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(totalRevenue)}
-                  </Typography>
-                  {isAllocated && (
-                    <Chip
-                      label={`${allocatedServiceLine} allocation`}
-                      size="small"
-                      color="secondary"
-                      variant="outlined"
-                      sx={{ mb: 1 }}
-                    />
+
+                  {/* Pipeline Values - Two separate figures */}
+                  <Box sx={{ mb: 2 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        mb: 1,
+                      }}
+                    >
+                      <Typography variant="body2" color="text.secondary">
+                        Total Pipeline:
+                      </Typography>
+                      <Typography variant="h5" component="div" fontWeight={700}>
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(totalRevenue)}
+                      </Typography>
+                    </Box>
+
+                    {/* Always show a second row with allocated value or indication */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        color={
+                          isAllocated ? "secondary.main" : "text.secondary"
+                        }
+                      >
+                        {isAllocated
+                          ? allocatedServiceLine
+                            ? `${allocatedServiceLine} Pipeline:`
+                            : "Allocated Pipeline:"
+                          : "Allocated Pipeline:"}
+                      </Typography>
+                      <Typography
+                        variant="h5"
+                        component="div"
+                        color={
+                          isAllocated ? "secondary.main" : "text.secondary"
+                        }
+                        fontWeight={700}
+                      >
+                        {isAllocated
+                          ? new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: "EUR",
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            }).format(allocatedRevenue)
+                          : "No allocation"}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Allocation info chips - only shown when allocation is active AND a service line is selected */}
+                  {isAllocated && allocatedServiceLine && (
+                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                      {allocatedServiceLine && (
+                        <Chip
+                          label={allocatedServiceLine}
+                          size="small"
+                          color="secondary"
+                          sx={{ fontWeight: 500 }}
+                        />
+                      )}
+                      <Chip
+                        label={
+                          allocationPercentage === 100
+                            ? "100% allocation"
+                            : `${allocationPercentage.toFixed(0)}% allocation`
+                        }
+                        size="small"
+                        color="secondary"
+                        variant="outlined"
+                      />
+                    </Stack>
                   )}
                 </Box>
               </Box>
-              <Box sx={{ display: "flex", alignItems: "center", mt: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", mt: 2 }}>
                 <Typography variant="body2" color="text.secondary">
                   {data.length} opportunities in pipeline
                 </Typography>
@@ -360,13 +455,42 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                       maximumFractionDigits: 0,
                     }).format(data.length > 0 ? totalRevenue / data.length : 0)}
                   </Typography>
+
+                  {/* Show allocated average when allocation is active */}
                   {isAllocated && (
+                    <Typography
+                      variant="h6"
+                      component="div"
+                      color="secondary.main"
+                      fontWeight={600}
+                      sx={{ mb: 1 }}
+                    >
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        data.length > 0 ? allocatedRevenue / data.length : 0
+                      )}
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ ml: 1 }}
+                      >
+                        allocated avg.
+                      </Typography>
+                    </Typography>
+                  )}
+
+                  {isAllocated && allocatedServiceLine && (
                     <Chip
                       label={`${allocatedServiceLine} allocation`}
                       size="small"
                       color="secondary"
                       variant="outlined"
-                      sx={{ mb: 1 }}
+                      sx={{ mb: 1, mt: 1 }}
                     />
                   )}
                 </Box>
@@ -404,7 +528,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 <Typography variant="subtitle2" color="text.secondary">
                   Pipeline by Stage
                 </Typography>
-                {isAllocated && (
+                {isAllocated && allocatedServiceLine && (
                   <Chip
                     label={`${allocatedServiceLine} allocation`}
                     size="small"
@@ -448,7 +572,13 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                               top: 0,
                               left: 0,
                               height: "100%",
-                              width: `${(item.value / totalRevenue) * 100}%`,
+                              width: `${
+                                (item.value /
+                                  (isAllocated
+                                    ? allocatedRevenue
+                                    : totalRevenue)) *
+                                100
+                              }%`,
                               bgcolor: COLORS[index % COLORS.length],
                               borderRadius: 4,
                             }}
@@ -464,7 +594,10 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                           style: "percent",
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
-                        }).format(item.value / totalRevenue)}
+                        }).format(
+                          item.value /
+                            (isAllocated ? allocatedRevenue : totalRevenue)
+                        )}
                       </Typography>
                     </Box>
                   </Box>
@@ -502,7 +635,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                   Click on chart segments to filter opportunities
                 </Typography>
               </div>
-              {isAllocated && (
+              {isAllocated && allocatedServiceLine && (
                 <Chip
                   label={`${allocatedServiceLine} allocation`}
                   size="small"
@@ -588,7 +721,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                   Distribution of revenue across service lines
                 </Typography>
               </div>
-              {isAllocated && (
+              {isAllocated && allocatedServiceLine && (
                 <Chip
                   label={`${allocatedServiceLine} allocation`}
                   size="small"
@@ -662,80 +795,17 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
           </Paper>
         </Grid>
 
-        {/* Sales Funnel */}
+        {/* Opportunity List - With increased vertical space and 25 rows by default */}
         <Grid item xs={12}>
-          <Paper
-            elevation={2}
-            sx={{
-              p: 3,
-              height: 400,
-              borderRadius: 3,
-              border: "1px solid",
-              borderColor: "divider",
-            }}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 2,
-              }}
-            >
-              <div>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Pipeline Funnel
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Opportunity progression through pipeline stages
-                </Typography>
-              </div>
-              {isAllocated && (
-                <Chip
-                  label={`${allocatedServiceLine} allocation`}
-                  size="small"
-                  color="secondary"
-                  sx={{ ml: 1 }}
-                />
-              )}
-            </Box>
-            <ResponsiveContainer width="100%" height="85%">
-              <FunnelChart>
-                <Tooltip content={<CustomTooltip />} />
-                <Funnel
-                  dataKey="revenue"
-                  data={funnelData}
-                  isAnimationActive
-                  onClick={handleChartClick}
-                  nameKey="name"
-                >
-                  <LabelList
-                    position="right"
-                    fill={theme.palette.text.primary}
-                    stroke="none"
-                    dataKey="name"
-                    style={{ fontWeight: 500 }}
-                  />
-                  {funnelData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Funnel>
-              </FunnelChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-
-        {/* Opportunity List */}
-        <Grid item xs={12}>
-          <OpportunityList
-            data={filteredOpportunities}
-            title="Pipeline Opportunities"
-            selectedOpportunities={selectedOpportunities}
-            onSelectionChange={onSelection}
-          />
+          <Box sx={{ height: "calc(100vh - 600px)", minHeight: "500px" }}>
+            <OpportunityList
+              data={filteredOpportunities}
+              title="Pipeline Opportunities"
+              selectedOpportunities={selectedOpportunities}
+              onSelectionChange={onSelection}
+              defaultRowsPerPage={25}
+            />
+          </Box>
         </Grid>
       </Grid>
     </Fade>
