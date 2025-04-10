@@ -12,11 +12,10 @@ import {
   alpha,
   Fade,
   Chip,
-  Button,
-  Collapse,
   IconButton,
   TextField,
   Autocomplete,
+  Collapse,
 } from "@mui/material";
 import TimelineIcon from "@mui/icons-material/Timeline";
 import BusinessIcon from "@mui/icons-material/Business";
@@ -35,106 +34,6 @@ import CallMadeIcon from "@mui/icons-material/CallMade";
 import GroupIcon from "@mui/icons-material/Group";
 import LabelIcon from "@mui/icons-material/Label";
 
-const groupTimelineByOpportunity = (timelineItems) => {
-  const opportunityGroups = {};
-
-  // First, group by opportunity ID
-  timelineItems.forEach((item) => {
-    const oppId = item.opportunity["Opportunity ID"];
-    if (!opportunityGroups[oppId]) {
-      opportunityGroups[oppId] = {
-        id: oppId,
-        name: item.opportunity["Opportunity"],
-        items: [],
-        firstDate: new Date(item.opportunity["Creation Date"]),
-        branchLevel: 0, // Will be assigned later
-      };
-    }
-    opportunityGroups[oppId].items.push(item);
-  });
-
-  // Convert to array and sort by first date
-  const groupsArray = Object.values(opportunityGroups);
-  groupsArray.sort((a, b) => a.firstDate - b.firstDate);
-
-  // Assign branch levels to avoid overlaps
-  // This is a simple algorithm that may need to be improved for complex cases
-  const assignedTimeRanges = [];
-
-  groupsArray.forEach((group) => {
-    const startDate = group.firstDate;
-    const endDate = new Date(Math.max(...group.items.map((item) => item.date)));
-
-    // Find a branch level that doesn't overlap with this opportunity's time range
-    let branchLevel = 0;
-    let foundLevel = false;
-
-    while (!foundLevel) {
-      foundLevel = true;
-
-      // Check if this level is already occupied during our date range
-      for (const range of assignedTimeRanges) {
-        if (range.level === branchLevel) {
-          // Check for overlap
-          if (startDate <= range.end && endDate >= range.start) {
-            foundLevel = false;
-            break;
-          }
-        }
-      }
-
-      if (!foundLevel) {
-        branchLevel++;
-      } else {
-        // Found an available level
-        assignedTimeRanges.push({
-          level: branchLevel,
-          start: startDate,
-          end: endDate,
-        });
-        group.branchLevel = branchLevel;
-        break;
-      }
-    }
-  });
-
-  return groupsArray;
-};
-
-const debugDataSample = (data) => {
-  if (!data || data.length === 0) return;
-
-  // Log a small sample of the data
-  console.log(
-    "Data Sample (first 2 items):",
-    data.slice(0, 2).map((item) => ({
-      Jobcode: item["Jobcode"],
-      Account: item["Account"],
-      Opportunity: item["Opportunity"],
-      "Opportunity ID": item["Opportunity ID"],
-    }))
-  );
-
-  // Check for the existence of Jobcode field
-  const hasJobcode = data.some((item) => item["Jobcode"] !== undefined);
-  console.log("Data has Jobcode field:", hasJobcode);
-
-  // Check different possible field names
-  const possibleJobcodeFields = [
-    "Jobcode",
-    "JobCode",
-    "Job Code",
-    "ProjectCode",
-    "Project Code",
-    "Project_Code",
-  ];
-  possibleJobcodeFields.forEach((field) => {
-    const hasField = data.some((item) => item[field] !== undefined);
-    if (hasField) {
-      console.log(`Found alternative field: ${field}`);
-    }
-  });
-};
 // Status colors mapping
 const statusColors = {
   1: "primary", // Earliest pipeline stages
@@ -175,15 +74,14 @@ const JobcodeTimelineTab = ({
   const [jobcodes, setJobcodes] = useState([]);
   const [selectedJobcode, setSelectedJobcode] = useState(null);
   const [timelineData, setTimelineData] = useState([]);
+  const [opportunityStreams, setOpportunityStreams] = useState([]);
   const [expandedCards, setExpandedCards] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [timelineYears, setTimelineYears] = useState([]);
 
-  // Group data by jobcode when data changes
+  // Detect jobcode field and organize data by jobcode
   useEffect(() => {
     if (!data || loading) return;
-
-    // Debug the data structure
-    debugDataSample(data);
 
     // Detect the jobcode field - try multiple possible field names
     const possibleJobcodeFields = [
@@ -241,8 +139,6 @@ const JobcodeTimelineTab = ({
       jobcodeMap[jobcode].push(opp);
     });
 
-    console.log(`Found ${Object.keys(jobcodeMap).length} unique jobcodes`);
-
     // Convert to array and sort by most recent opportunity
     const jobcodeArray = Object.entries(jobcodeMap).map(
       ([code, opportunities]) => {
@@ -276,9 +172,6 @@ const JobcodeTimelineTab = ({
         (item) => item.jobcode !== "Unknown"
       );
       if (filteredArray.length > 0) {
-        console.log(
-          `Filtered out "Unknown" jobcode, ${filteredArray.length} jobcodes remaining`
-        );
         setJobcodes(filteredArray);
       } else {
         setJobcodes(jobcodeArray);
@@ -289,44 +182,49 @@ const JobcodeTimelineTab = ({
 
     // Don't auto-select anything by default
     setSelectedJobcode(null);
-
-    // Log the final list of jobcodes
-    console.log(
-      "Final jobcodes:",
-      jobcodeArray.map((j) => j.jobcode)
-    );
   }, [data, loading]);
 
-  // Update timeline data when selected jobcode changes
+  // Process timeline data when selected jobcode changes
   useEffect(() => {
-    if (!selectedJobcode) return;
+    if (!selectedJobcode) {
+      setTimelineData([]);
+      setOpportunityStreams([]);
+      setTimelineYears([]);
+      return;
+    }
 
-    const { timelineItems, opportunityGroups } =
-      generateTimelineData(selectedJobcode);
-    setTimelineData(timelineItems);
-    setOpportunityGroups(opportunityGroups);
-  }, [selectedJobcode]);
+    // Create timeline items for each opportunity
+    const allTimelineItems = [];
+    const streams = [];
+    const years = new Set();
+    const months = new Set();
 
-  // Generate timeline data from opportunities
-  const generateTimelineData = (jobcodeData) => {
-    const timelineItems = [];
-    const opportunities = jobcodeData.opportunities;
+    // Process each opportunity separately to create streams
+    selectedJobcode.opportunities.forEach((opp) => {
+      // Create a list of timeline events for this opportunity
+      const opportunityEvents = [];
 
-    opportunities.forEach((opp, index) => {
       // Add opportunity creation
-      timelineItems.push({
-        date: new Date(opp["Creation Date"]),
+      const creationDate = new Date(opp["Creation Date"]);
+      years.add(creationDate.getFullYear());
+      months.add(`${creationDate.getFullYear()}-${creationDate.getMonth()}`);
+
+      opportunityEvents.push({
+        date: creationDate,
         type: "creation",
         title: `Opportunity Created: ${opp["Opportunity"]}`,
         opportunity: opp,
         id: `${opp["Opportunity ID"]}-creation`,
-        isFirst: index === 0,
       });
 
       // Add status changes if available
       if (opp["Last Status Change Date"]) {
-        timelineItems.push({
-          date: new Date(opp["Last Status Change Date"]),
+        const statusDate = new Date(opp["Last Status Change Date"]);
+        years.add(statusDate.getFullYear());
+        months.add(`${statusDate.getFullYear()}-${statusDate.getMonth()}`);
+
+        opportunityEvents.push({
+          date: statusDate,
           type: "status",
           title: `Status Changed to: ${
             statusText[opp["Status"]] || `Status ${opp["Status"]}`
@@ -339,8 +237,12 @@ const JobcodeTimelineTab = ({
 
       // Add booking date if available and status is 14 (Booked)
       if (opp["Status"] === 14 && opp["Winning Date"]) {
-        timelineItems.push({
-          date: new Date(opp["Winning Date"]),
+        const winDate = new Date(opp["Winning Date"]);
+        years.add(winDate.getFullYear());
+        months.add(`${winDate.getFullYear()}-${winDate.getMonth()}`);
+
+        opportunityEvents.push({
+          date: winDate,
           type: "win",
           title: `Opportunity Won: ${opp["Opportunity"]}`,
           opportunity: opp,
@@ -350,27 +252,71 @@ const JobcodeTimelineTab = ({
 
       // Add lost date if available and status is 15 (Lost)
       if (opp["Status"] === 15 && opp["Lost Date"]) {
-        timelineItems.push({
-          date: new Date(opp["Lost Date"]),
+        const lostDate = new Date(opp["Lost Date"]);
+        years.add(lostDate.getFullYear());
+        months.add(`${lostDate.getFullYear()}-${lostDate.getMonth()}`);
+
+        opportunityEvents.push({
+          date: lostDate,
           type: "loss",
           title: `Opportunity Lost: ${opp["Opportunity"]}`,
           opportunity: opp,
           id: `${opp["Opportunity ID"]}-loss`,
         });
       }
+
+      // Sort events by date
+      opportunityEvents.sort((a, b) => a.date - b.date);
+
+      // Add all events to the main timeline
+      allTimelineItems.push(...opportunityEvents);
+
+      // Only create a stream if there are events
+      if (opportunityEvents.length > 0) {
+        streams.push({
+          opportunityId: opp["Opportunity ID"],
+          opportunityName: opp["Opportunity"],
+          serviceLine: opp["Service Line 1"] || "Unknown",
+          events: opportunityEvents,
+          firstDate: opportunityEvents[0].date,
+          lastDate: opportunityEvents[opportunityEvents.length - 1].date,
+          status: opp["Status"],
+          revenue: opp["Gross Revenue"] || 0,
+        });
+      }
     });
 
-    // Sort timeline items by date
-    timelineItems.sort((a, b) => a.date - b.date);
+    // Sort all timeline items by date for the main timeline
+    allTimelineItems.sort((a, b) => a.date - b.date);
 
-    // Group by opportunity for branch visualization
-    const opportunityGroups = groupTimelineByOpportunity(timelineItems);
+    // Sort streams by first date
+    streams.sort((a, b) => a.firstDate - b.firstDate);
 
-    setTimelineData(timelineItems);
-    return { timelineItems, opportunityGroups };
-  };
+    // Convert years to array and sort
+    const yearsArray = Array.from(years).sort();
 
-  const [opportunityGroups, setOpportunityGroups] = useState([]);
+    // Process months into a chronological array
+    const monthsArray = Array.from(months).sort();
+    const processedMonths = monthsArray.map((monthYearStr) => {
+      const [yearPart, monthPart] = monthYearStr.split("-");
+      return {
+        year: parseInt(yearPart),
+        month: parseInt(monthPart),
+        label: new Date(
+          parseInt(yearPart),
+          parseInt(monthPart),
+          1
+        ).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "short",
+        }),
+      };
+    });
+
+    setTimelineData(allTimelineItems);
+    setOpportunityStreams(streams);
+    setTimelineYears(yearsArray);
+  }, [selectedJobcode]);
 
   // Handle jobcode selection
   const handleJobcodeSelection = (jobcode) => {
@@ -435,12 +381,116 @@ const JobcodeTimelineTab = ({
       jobcode.account.toLowerCase().includes(query) ||
       jobcode.opportunities.some(
         (opp) =>
-          opp["Opportunity"].toLowerCase().includes(query) ||
+          opp["Opportunity"]?.toLowerCase().includes(query) ||
           (opp["Service Line 1"] &&
             opp["Service Line 1"].toLowerCase().includes(query))
       )
     );
   });
+
+  // Helper to format currency values
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  // Helper to get status chip color
+  const getStatusChipColor = (status) => {
+    return statusColors[status] || "default";
+  };
+
+  // Calculate relative position of an event in the timeline (as a percentage)
+  const calculateTimelinePosition = (date) => {
+    if (!timelineYears.length || !opportunityStreams.length) return 0;
+
+    // Get the earliest and latest dates from all streams
+    const earliestDate = Math.min(
+      ...opportunityStreams.map((s) => s.firstDate.getTime())
+    );
+    const latestDate = Math.max(
+      ...opportunityStreams.map((s) => s.lastDate.getTime())
+    );
+
+    const totalDuration = latestDate - earliestDate;
+    if (totalDuration <= 0) return 0;
+
+    const eventPosition = date.getTime() - earliestDate;
+    return (eventPosition / totalDuration) * 100;
+  };
+
+  // Generate an array of months between start and end dates for timeline markers
+  const generateTimelineMarkers = () => {
+    if (!opportunityStreams.length) return [];
+
+    // Get earliest and latest dates
+    const earliestDate = new Date(
+      Math.min(...opportunityStreams.map((s) => s.firstDate.getTime()))
+    );
+    const latestDate = new Date(
+      Math.max(...opportunityStreams.map((s) => s.lastDate.getTime()))
+    );
+
+    // Ensure we have at least the start and end markers
+    const markers = [
+      {
+        date: earliestDate,
+        position: 0,
+        label: formatDate(earliestDate),
+      },
+      {
+        date: latestDate,
+        position: 100,
+        label: formatDate(latestDate),
+      },
+    ];
+
+    // Add midpoint
+    const midpointDate = new Date(
+      (earliestDate.getTime() + latestDate.getTime()) / 2
+    );
+    markers.push({
+      date: midpointDate,
+      position: 50,
+      label: formatDate(midpointDate),
+    });
+
+    // Add quarter markers if timeline is long enough
+    const durationMonths =
+      (latestDate.getFullYear() - earliestDate.getFullYear()) * 12 +
+      (latestDate.getMonth() - earliestDate.getMonth());
+
+    if (durationMonths > 3) {
+      // Add quarter markers
+      const quarterDate1 = new Date(
+        earliestDate.getTime() +
+          (latestDate.getTime() - earliestDate.getTime()) * 0.25
+      );
+      const quarterDate3 = new Date(
+        earliestDate.getTime() +
+          (latestDate.getTime() - earliestDate.getTime()) * 0.75
+      );
+
+      markers.push(
+        {
+          date: quarterDate1,
+          position: 25,
+          label: formatDate(quarterDate1),
+        },
+        {
+          date: quarterDate3,
+          position: 75,
+          label: formatDate(quarterDate3),
+        }
+      );
+    }
+
+    // Sort markers by position
+    return markers.sort((a, b) => a.position - b.position);
+  };
 
   if (loading) {
     return (
@@ -456,16 +506,6 @@ const JobcodeTimelineTab = ({
       </Box>
     );
   }
-
-  // Helper to format currency values
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
 
   return (
     <Fade in={!loading} timeout={500}>
@@ -486,7 +526,7 @@ const JobcodeTimelineTab = ({
             </Typography>
             <Typography variant="body2" color="text.secondary" paragraph>
               Select a jobcode to view the complete project timeline. Connected
-              opportunities are shown as a unified project history.
+              opportunities are shown as separate streams.
             </Typography>
 
             <Box sx={{ mb: selectedJobcode ? 3 : 0 }}>
@@ -497,7 +537,6 @@ const JobcodeTimelineTab = ({
                   return `${String(option.jobcode)} - ${option.account}`;
                 }}
                 onChange={(event, newValue) => {
-                  console.log("Selected jobcode:", newValue);
                   if (newValue) handleJobcodeSelection(newValue);
                 }}
                 value={selectedJobcode}
@@ -512,7 +551,7 @@ const JobcodeTimelineTab = ({
                     return options;
                   }
 
-                  const filtered = options.filter((option) => {
+                  return options.filter((option) => {
                     const jobcodeStr = String(option.jobcode).toLowerCase();
                     const accountStr = String(option.account).toLowerCase();
 
@@ -532,11 +571,6 @@ const JobcodeTimelineTab = ({
                       )
                     );
                   });
-
-                  console.log(
-                    `Search "${inputValue}" found ${filtered.length} matches`
-                  );
-                  return filtered;
                 }}
                 renderInput={(params) => (
                   <TextField
@@ -740,543 +774,704 @@ const JobcodeTimelineTab = ({
 
               <Divider sx={{ mb: 4 }} />
 
-              {/* Custom Timeline Implementation */}
-              <Box sx={{ position: "relative", ml: 2, mr: 2 }}>
-                {/* Center Timeline Line */}
+              {/* Multi-column timeline with vertical time markers on the left */}
+              <Box sx={{ display: "flex" }}>
+                {/* Vertical timeline markers on the left */}
                 <Box
                   sx={{
-                    position: "absolute",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    width: "4px",
-                    height: "100%",
-                    backgroundColor: alpha(theme.palette.primary.main, 0.2),
-                    zIndex: 0,
-                    borderRadius: 4,
+                    width: "150px",
+                    position: "relative",
+                    borderRight: `1px solid ${alpha(
+                      theme.palette.primary.main,
+                      0.2
+                    )}`,
+                    mr: 3,
+                    height: "600px", // Fixed height for timeline visualization
                   }}
-                />
+                >
+                  {/* Vertical line representing the timeline */}
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      left: "50%",
+                      width: "2px",
+                      backgroundColor: alpha(theme.palette.primary.main, 0.3),
+                      transform: "translateX(-50%)",
+                    }}
+                  />
 
-                {/* Opportunity Branch Lines */}
-                {opportunityGroups.map((group) => {
-                  // Calculate offset - each branch level is offset by a certain amount
-                  const leftOffset = 50 - group.branchLevel * 6;
-                  const rightOffset = 50 + group.branchLevel * 6;
+                  {/* Timeline year markers */}
+                  {timelineYears.map((year, index) => {
+                    // Calculate position based on first event in this year
+                    const yearEvents = timelineData.filter(
+                      (event) => event.date.getFullYear() === year
+                    );
 
-                  // Define branch color based on branch level (alternating colors)
-                  const branchColor = [
-                    theme.palette.primary.main,
-                    theme.palette.secondary.main,
-                    theme.palette.info.main,
-                    theme.palette.success.main,
-                    theme.palette.warning.main,
-                  ][group.branchLevel % 5];
+                    if (yearEvents.length === 0) return null;
 
-                  // Calculate branch start and end positions based on timeline items
-                  const groupItems = timelineData.filter(
-                    (item) => item.opportunity["Opportunity ID"] === group.id
-                  );
+                    // Get first and last events of the year
+                    const firstEvent = yearEvents.reduce(
+                      (earliest, event) =>
+                        event.date < earliest.date ? event : earliest,
+                      yearEvents[0]
+                    );
 
-                  if (groupItems.length === 0) return null;
+                    const position = calculateTimelinePosition(firstEvent.date);
 
-                  // Sort items by date
-                  groupItems.sort((a, b) => a.date - b.date);
-
-                  // Calculate start and end positions
-                  const firstItemDate = new Date(groupItems[0].date).getTime();
-                  const lastItemDate = new Date(
-                    groupItems[groupItems.length - 1].date
-                  ).getTime();
-
-                  // Find the earliest and latest dates in the entire timeline
-                  const timelineStart = new Date(
-                    timelineData[0].date
-                  ).getTime();
-                  const timelineEnd = new Date(
-                    timelineData[timelineData.length - 1].date
-                  ).getTime();
-                  const timelineRange = timelineEnd - timelineStart;
-
-                  // Calculate positions as percentages of the timeline height
-                  // Add a small offset (5%) to ensure the branch doesn't start/end exactly at an item
-                  const startPosition = Math.max(
-                    0,
-                    ((firstItemDate - timelineStart) / timelineRange) * 100 - 5
-                  );
-                  const endPosition = Math.min(
-                    100,
-                    ((lastItemDate - timelineStart) / timelineRange) * 100 + 5
-                  );
-
-                  return (
-                    <Box
-                      key={`branch-${group.id}`}
-                      sx={{
-                        position: "absolute",
-                        left: `${
-                          group.branchLevel % 2 === 0 ? leftOffset : rightOffset
-                        }%`,
-                        top: `${startPosition}%`,
-                        height: `${endPosition - startPosition}%`,
-                        width: "3px",
-                        backgroundColor: alpha(branchColor, 0.5),
-                        borderRadius: 4,
-                        zIndex: 1,
-                        "&::before": {
-                          content: '""',
-                          position: "absolute",
-                          top: -5,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          backgroundColor: branchColor,
-                          zIndex: 2,
-                        },
-                        "&::after": {
-                          content: '""',
-                          position: "absolute",
-                          bottom: -5,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          backgroundColor: branchColor,
-                          zIndex: 2,
-                        },
-                      }}
-                    />
-                  );
-                })}
-
-                {/* Branch Labels */}
-                {opportunityGroups.map((group) => {
-                  // Calculate offset
-                  const leftOffset = 50 - group.branchLevel * 6;
-                  const rightOffset = 50 + group.branchLevel * 6;
-                  const side = group.branchLevel % 2 === 0 ? "left" : "right";
-
-                  // Define branch color based on branch level
-                  const branchColor = [
-                    theme.palette.primary.main,
-                    theme.palette.secondary.main,
-                    theme.palette.info.main,
-                    theme.palette.success.main,
-                    theme.palette.warning.main,
-                  ][group.branchLevel % 5];
-
-                  return (
-                    <Box
-                      key={`branch-label-${group.id}`}
-                      sx={{
-                        position: "absolute",
-                        [side]: `${
-                          side === "left" ? leftOffset - 10 : rightOffset + 10
-                        }%`,
-                        top: "0%",
-                        transform: "translateY(-100%)",
-                        color: branchColor,
-                        backgroundColor: alpha(branchColor, 0.1),
-                        borderRadius: 1,
-                        px: 1,
-                        py: 0.5,
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: "120px",
-                        zIndex: 3,
-                      }}
-                    >
-                      {group.name}
-                    </Box>
-                  );
-                })}
-
-                {/* Timeline Items */}
-                {timelineData.map((item, index) => {
-                  // Find which opportunity group this item belongs to
-                  const oppGroup = opportunityGroups.find(
-                    (group) => group.id === item.opportunity["Opportunity ID"]
-                  );
-
-                  // Determine which side to render (left or right) based on branch level
-                  // Even branch levels go on left, odd on right
-                  const isEven = oppGroup && oppGroup.branchLevel % 2 === 0;
-                  const dotColor = getTimelineDotColor(item.type, item.status);
-
-                  // Calculate offset from center (to align with branch)
-                  const leftOffset =
-                    50 - (oppGroup ? oppGroup.branchLevel * 6 : 0);
-                  const rightOffset =
-                    50 + (oppGroup ? oppGroup.branchLevel * 6 : 0);
-
-                  return (
-                    <Box
-                      key={item.id}
-                      sx={{
-                        display: "flex",
-                        mb: 4,
-                        position: "relative",
-                        justifyContent: isEven ? "flex-start" : "flex-end",
-                      }}
-                    >
-                      {/* Date - Only shown on one side */}
-                      {isEven && (
-                        <Box
-                          sx={{
-                            width: "48%",
-                            textAlign: "right",
-                            pr: 3,
-                            pt: 1,
-                          }}
-                        >
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            fontWeight={500}
-                          >
-                            {formatDate(item.date)}
-                          </Typography>
-                        </Box>
-                      )}
-
-                      {/* Timeline Dot */}
+                    return (
                       <Box
+                        key={`year-${year}`}
                         sx={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: "50%",
-                          backgroundColor: theme.palette[dotColor].main,
+                          position: "absolute",
+                          top: `${position}%`,
+                          left: 0,
+                          right: 0,
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center",
-                          color: "white",
-                          position: "absolute",
-                          left: oppGroup
-                            ? `${
-                                oppGroup.branchLevel % 2 === 0
-                                  ? leftOffset
-                                  : rightOffset
-                              }%`
-                            : "50%",
-                          transform: "translateX(-50%)",
-                          zIndex: 2,
-                          boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                          border: "2px solid white",
+                          justifyContent: "flex-end",
+                          pr: 2,
+                          transform: "translateY(-50%)",
+                          pointerEvents: "none",
                         }}
                       >
-                        {getTimelineIcon(item.type, item.status)}
-                      </Box>
-
-                      {/* Content Card */}
-                      <Box
-                        sx={{
-                          width: "48%",
-                          ...(isEven
-                            ? {
-                                ml: 3,
-                                pl: oppGroup ? oppGroup.branchLevel * 2 : 0,
-                              }
-                            : {
-                                mr: 3,
-                                pr: oppGroup ? oppGroup.branchLevel * 2 : 0,
-                              }),
-                        }}
-                      >
-                        <Card
-                          variant="outlined"
+                        <Typography
+                          variant="h6"
+                          fontWeight={600}
+                          color="primary.main"
                           sx={{
-                            borderRadius: 2,
-                            boxShadow: expandedCards[item.id] ? 3 : 1,
-                            borderColor: expandedCards[item.id]
-                              ? theme.palette[dotColor].main
-                              : alpha(theme.palette[dotColor].main, 0.3),
-                            transition: "all 0.3s ease",
-                            "&:hover": {
-                              boxShadow: 3,
-                              borderColor: theme.palette[dotColor].main,
-                            },
-                            ...(oppGroup && {
-                              borderLeft: `4px solid ${
-                                [
-                                  theme.palette.primary.main,
-                                  theme.palette.secondary.main,
-                                  theme.palette.info.main,
-                                  theme.palette.success.main,
-                                  theme.palette.warning.main,
-                                ][oppGroup.branchLevel % 5]
-                              }`,
-                            }),
+                            backgroundColor: alpha(
+                              theme.palette.background.paper,
+                              0.8
+                            ),
+                            px: 1,
+                            py: 0.5,
+                            borderRadius: 1,
                           }}
                         >
-                          <CardContent>
+                          {year}
+                        </Typography>
+                        <Box
+                          sx={{
+                            width: 10,
+                            height: 2,
+                            backgroundColor: theme.palette.primary.main,
+                            mx: 1,
+                          }}
+                        />
+                      </Box>
+                    );
+                  })}
+
+                  {/* Additional date markers */}
+                  {generateTimelineMarkers().map((marker, index) => (
+                    <Box
+                      key={`marker-${index}`}
+                      sx={{
+                        position: "absolute",
+                        top: `${marker.position}%`,
+                        left: 0,
+                        right: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        pr: 2,
+                        transform: "translateY(-50%)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          backgroundColor: alpha(
+                            theme.palette.background.paper,
+                            0.8
+                          ),
+                          px: 1,
+                          py: 0.5,
+                          borderRadius: 1,
+                          fontSize: "0.7rem",
+                          display:
+                            marker.position % 25 === 0 ? "block" : "none", // Only show at 0, 25, 50, 75, 100
+                        }}
+                      >
+                        {new Date(marker.date).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </Typography>
+                      <Box
+                        sx={{
+                          width: marker.position % 25 === 0 ? 8 : 4, // Longer lines for main markers
+                          height: 1,
+                          backgroundColor: alpha(
+                            theme.palette.primary.main,
+                            marker.position % 25 === 0 ? 0.8 : 0.4
+                          ),
+                          mx: 1,
+                        }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+
+                {/* Multi-column timeline content */}
+                {opportunityStreams.length > 0 ? (
+                  <Box sx={{ flex: 1, position: "relative" }}>
+                    {/* Timeline header with each opportunity as a column */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        mb: 3,
+                        borderBottom: `1px solid ${alpha(
+                          theme.palette.primary.main,
+                          0.2
+                        )}`,
+                        pb: 2,
+                      }}
+                    >
+                      {opportunityStreams.map((stream, index) => (
+                        <Box
+                          key={`header-${stream.opportunityId}`}
+                          sx={{
+                            flex: 1,
+                            px: 1,
+                            borderLeft:
+                              index > 0
+                                ? `1px dashed ${alpha(
+                                    theme.palette.divider,
+                                    0.5
+                                  )}`
+                                : "none",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              mb: 1,
+                            }}
+                          >
                             <Box
                               sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "flex-start",
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                bgcolor:
+                                  theme.palette[
+                                    getStatusChipColor(stream.status)
+                                  ].main,
+                                mr: 1,
                               }}
+                            />
+                            <Typography
+                              variant="subtitle2"
+                              fontWeight={600}
+                              noWrap
+                              sx={{ maxWidth: "150px" }}
                             >
+                              {stream.opportunityName}
+                            </Typography>
+                          </Box>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Chip
+                              size="small"
+                              label={formatCurrency(stream.revenue)}
+                              variant="outlined"
+                              color={getStatusChipColor(stream.status)}
+                              sx={{ height: 20, fontSize: "0.7rem" }}
+                            />
+                            {stream.serviceLine && (
                               <Typography
-                                variant="subtitle1"
-                                fontWeight={600}
-                                gutterBottom
+                                variant="caption"
+                                color="text.secondary"
+                                noWrap
+                                sx={{ maxWidth: "100px" }}
                               >
-                                {item.title}
+                                {stream.serviceLine}
                               </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+
+                    {/* Vertical timeline with multiple columns */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        position: "relative",
+                        height: "600px", // Fixed height for timeline visualization
+                        mb: 4,
+                      }}
+                    >
+                      {/* Timeline connector - vertical line in the center of each column */}
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: "100%",
+                          display: "flex",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {opportunityStreams.map((stream, index) => (
+                          <Box
+                            key={`connector-${stream.opportunityId}`}
+                            sx={{
+                              flex: 1,
+                              px: 1,
+                              position: "relative",
+                              "&::before": {
+                                content: '""',
+                                position: "absolute",
+                                top: 0,
+                                bottom: 0,
+                                left: "50%",
+                                width: "2px",
+                                backgroundColor: alpha(
+                                  theme.palette[
+                                    getStatusChipColor(stream.status)
+                                  ].main,
+                                  0.3
+                                ),
+                                transform: "translateX(-50%)",
+                              },
+                              borderLeft:
+                                index > 0
+                                  ? `1px dashed ${alpha(
+                                      theme.palette.divider,
+                                      0.5
+                                    )}`
+                                  : "none",
+                            }}
+                          />
+                        ))}
+                      </Box>
+
+                      {/* Timeline content columns */}
+                      {opportunityStreams.map((stream, streamIndex) => (
+                        <Box
+                          key={`stream-${stream.opportunityId}`}
+                          sx={{
+                            flex: 1,
+                            px: 1,
+                            position: "relative",
+                            borderLeft:
+                              streamIndex > 0
+                                ? `1px dashed ${alpha(
+                                    theme.palette.divider,
+                                    0.5
+                                  )}`
+                                : "none",
+                          }}
+                        >
+                          {/* Timeline events for this opportunity */}
+                          {stream.events.map((event, eventIndex) => {
+                            const topPosition = `${calculateTimelinePosition(
+                              event.date
+                            )}%`;
+                            const dotColor = getTimelineDotColor(
+                              event.type,
+                              event.status
+                            );
+
+                            return (
                               <Box
-                                sx={{ display: "flex", alignItems: "center" }}
+                                key={event.id}
+                                sx={{
+                                  position: "absolute",
+                                  top: topPosition,
+                                  left: 0,
+                                  right: 0,
+                                  display: "flex",
+                                  justifyContent: "center",
+                                  transform: "translateY(-50%)",
+                                  zIndex: 10,
+                                  mb: 4,
+                                }}
                               >
-                                {!isEven && (
-                                  <Typography
-                                    variant="body2"
-                                    color="text.secondary"
-                                    fontWeight={500}
-                                    sx={{ mr: 1 }}
-                                  >
-                                    {formatDate(item.date)}
-                                  </Typography>
-                                )}
-                                <IconButton
-                                  size="small"
-                                  onClick={() => toggleExpanded(item.id)}
-                                  sx={{
-                                    bgcolor: expandedCards[item.id]
-                                      ? alpha(theme.palette[dotColor].main, 0.1)
-                                      : "transparent",
-                                  }}
-                                >
-                                  {expandedCards[item.id] ? (
-                                    <ExpandLessIcon />
-                                  ) : (
-                                    <ExpandMoreIcon />
-                                  )}
-                                </IconButton>
-                              </Box>
-                            </Box>
-
-                            <Box
-                              sx={{
-                                display: "flex",
-                                flexWrap: "wrap",
-                                gap: 1,
-                                mb: 1,
-                              }}
-                            >
-                              <Chip
-                                size="small"
-                                label={`ID: ${item.opportunity["Opportunity ID"]}`}
-                                variant="outlined"
-                                color="primary"
-                              />
-                              {item.type === "status" && (
-                                <Chip
-                                  size="small"
-                                  label={
-                                    statusText[item.status] ||
-                                    `Status ${item.status}`
-                                  }
-                                  color={statusColors[item.status] || "default"}
-                                />
-                              )}
-                              {item.opportunity["Service Line 1"] && (
-                                <Chip
-                                  size="small"
-                                  label={item.opportunity["Service Line 1"]}
-                                  variant="outlined"
-                                  color="secondary"
-                                />
-                              )}
-                            </Box>
-
-                            <Collapse in={expandedCards[item.id]}>
-                              <Box sx={{ mt: 2 }}>
-                                <Divider sx={{ mb: 2 }} />
-
-                                <Grid container spacing={2}>
-                                  <Grid item xs={12} sm={6}>
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        mb: 1,
-                                      }}
-                                    >
-                                      <BusinessIcon
-                                        fontSize="small"
-                                        sx={{ mr: 1, color: "text.secondary" }}
-                                      />
-                                      <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                      >
-                                        Account:{" "}
-                                        <b>{item.opportunity["Account"]}</b>
-                                      </Typography>
-                                    </Box>
-
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        mb: 1,
-                                      }}
-                                    >
-                                      <EuroIcon
-                                        fontSize="small"
-                                        sx={{ mr: 1, color: "text.secondary" }}
-                                      />
-                                      <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                      >
-                                        Revenue:{" "}
-                                        <b>
-                                          {formatCurrency(
-                                            item.opportunity["Gross Revenue"] ||
-                                              0
-                                          )}
-                                        </b>
-                                      </Typography>
-                                    </Box>
-
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        mb: 1,
-                                      }}
-                                    >
-                                      <LabelIcon
-                                        fontSize="small"
-                                        sx={{ mr: 1, color: "text.secondary" }}
-                                      />
-                                      <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                      >
-                                        Service:{" "}
-                                        <b>
-                                          {item.opportunity["Service Line 1"] ||
-                                            "N/A"}
-                                        </b>
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-
-                                  <Grid item xs={12} sm={6}>
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        mb: 1,
-                                      }}
-                                    >
-                                      <GroupIcon
-                                        fontSize="small"
-                                        sx={{ mr: 1, color: "text.secondary" }}
-                                      />
-                                      <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                      >
-                                        Team:{" "}
-                                        <b>
-                                          {item.opportunity["EP"] || "N/A"} /{" "}
-                                          {item.opportunity["EM"] || "N/A"}
-                                        </b>
-                                      </Typography>
-                                    </Box>
-
-                                    {item.opportunity["Service Offering 1"] && (
-                                      <Box
-                                        sx={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          mb: 1,
-                                        }}
-                                      >
-                                        <CallMadeIcon
-                                          fontSize="small"
-                                          sx={{
-                                            mr: 1,
-                                            color: "text.secondary",
-                                          }}
-                                        />
-                                        <Typography
-                                          variant="body2"
-                                          color="text.secondary"
-                                        >
-                                          Offering:{" "}
-                                          <b>
-                                            {
-                                              item.opportunity[
-                                                "Service Offering 1"
-                                              ]
-                                            }
-                                          </b>
-                                        </Typography>
-                                      </Box>
-                                    )}
-
-                                    {item.opportunity["Project Type"] && (
-                                      <Box
-                                        sx={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          mb: 1,
-                                        }}
-                                      >
-                                        <AccountTreeIcon
-                                          fontSize="small"
-                                          sx={{
-                                            mr: 1,
-                                            color: "text.secondary",
-                                          }}
-                                        />
-                                        <Typography
-                                          variant="body2"
-                                          color="text.secondary"
-                                        >
-                                          Project Type:{" "}
-                                          <b>
-                                            {item.opportunity["Project Type"]}
-                                          </b>
-                                        </Typography>
-                                      </Box>
-                                    )}
-                                  </Grid>
-                                </Grid>
-
+                                {/* Event dot */}
                                 <Box
                                   sx={{
-                                    mt: 2,
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: "50%",
+                                    backgroundColor:
+                                      theme.palette[dotColor].main,
                                     display: "flex",
-                                    justifyContent: "flex-end",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: "white",
+                                    zIndex: 3,
+                                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                                    border: "2px solid white",
+                                    cursor: "pointer",
+                                    "&:hover": {
+                                      transform: "scale(1.1)",
+                                    },
+                                  }}
+                                  onClick={() => toggleExpanded(event.id)}
+                                >
+                                  {getTimelineIcon(event.type, event.status)}
+                                </Box>
+
+                                {/* Event card - shown when expanded */}
+                                <Collapse
+                                  in={!!expandedCards[event.id]}
+                                  sx={{
+                                    position: "absolute",
+                                    top: "100%",
+                                    left: "-50%",
+                                    right: "-50%",
+                                    zIndex: 20,
+                                    mt: 1,
                                   }}
                                 >
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    color={dotColor}
-                                    onClick={() =>
-                                      onSelection([item.opportunity])
-                                    }
+                                  <Card
+                                    sx={{
+                                      borderRadius: 2,
+                                      boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                                      borderLeft: `4px solid ${theme.palette[dotColor].main}`,
+                                      mb: 2,
+                                    }}
                                   >
-                                    Select Opportunity
-                                  </Button>
-                                </Box>
+                                    <CardContent>
+                                      <Box
+                                        sx={{
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          alignItems: "flex-start",
+                                        }}
+                                      >
+                                        <Box>
+                                          <Typography
+                                            variant="subtitle1"
+                                            fontWeight={600}
+                                          >
+                                            {event.title}
+                                          </Typography>
+                                          <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                          >
+                                            {formatDate(event.date)}
+                                          </Typography>
+                                        </Box>
+                                        <IconButton
+                                          size="small"
+                                          onClick={() =>
+                                            toggleExpanded(event.id)
+                                          }
+                                          sx={{
+                                            bgcolor: expandedCards[event.id]
+                                              ? alpha(
+                                                  theme.palette[dotColor].main,
+                                                  0.1
+                                                )
+                                              : "transparent",
+                                          }}
+                                        >
+                                          <ExpandLessIcon />
+                                        </IconButton>
+                                      </Box>
+
+                                      <Box
+                                        sx={{
+                                          mt: 1,
+                                          display: "flex",
+                                          flexWrap: "wrap",
+                                          gap: 1,
+                                        }}
+                                      >
+                                        <Chip
+                                          size="small"
+                                          label={`ID: ${event.opportunity["Opportunity ID"]}`}
+                                          variant="outlined"
+                                          color="primary"
+                                        />
+                                        {event.type === "status" && (
+                                          <Chip
+                                            size="small"
+                                            label={
+                                              statusText[event.status] ||
+                                              `Status ${event.status}`
+                                            }
+                                            color={
+                                              statusColors[event.status] ||
+                                              "default"
+                                            }
+                                          />
+                                        )}
+                                        {event.opportunity[
+                                          "Service Line 1"
+                                        ] && (
+                                          <Chip
+                                            size="small"
+                                            label={
+                                              event.opportunity[
+                                                "Service Line 1"
+                                              ]
+                                            }
+                                            variant="outlined"
+                                            color="secondary"
+                                          />
+                                        )}
+                                      </Box>
+
+                                      <Box sx={{ mt: 2 }}>
+                                        <Divider sx={{ mb: 2 }} />
+
+                                        <Grid container spacing={2}>
+                                          <Grid item xs={12} sm={6}>
+                                            <Box
+                                              sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                mb: 1,
+                                              }}
+                                            >
+                                              <BusinessIcon
+                                                fontSize="small"
+                                                sx={{
+                                                  mr: 1,
+                                                  color: "text.secondary",
+                                                }}
+                                              />
+                                              <Typography
+                                                variant="body2"
+                                                color="text.secondary"
+                                              >
+                                                Account:{" "}
+                                                <b>
+                                                  {event.opportunity["Account"]}
+                                                </b>
+                                              </Typography>
+                                            </Box>
+
+                                            <Box
+                                              sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                mb: 1,
+                                              }}
+                                            >
+                                              <EuroIcon
+                                                fontSize="small"
+                                                sx={{
+                                                  mr: 1,
+                                                  color: "text.secondary",
+                                                }}
+                                              />
+                                              <Typography
+                                                variant="body2"
+                                                color="text.secondary"
+                                              >
+                                                Revenue:{" "}
+                                                <b>
+                                                  {formatCurrency(
+                                                    event.opportunity[
+                                                      "Gross Revenue"
+                                                    ] || 0
+                                                  )}
+                                                </b>
+                                              </Typography>
+                                            </Box>
+
+                                            <Box
+                                              sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                mb: 1,
+                                              }}
+                                            >
+                                              <LabelIcon
+                                                fontSize="small"
+                                                sx={{
+                                                  mr: 1,
+                                                  color: "text.secondary",
+                                                }}
+                                              />
+                                              <Typography
+                                                variant="body2"
+                                                color="text.secondary"
+                                              >
+                                                Service:{" "}
+                                                <b>
+                                                  {event.opportunity[
+                                                    "Service Line 1"
+                                                  ] || "N/A"}
+                                                </b>
+                                              </Typography>
+                                            </Box>
+                                          </Grid>
+
+                                          <Grid item xs={12} sm={6}>
+                                            <Box
+                                              sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                mb: 1,
+                                              }}
+                                            >
+                                              <GroupIcon
+                                                fontSize="small"
+                                                sx={{
+                                                  mr: 1,
+                                                  color: "text.secondary",
+                                                }}
+                                              />
+                                              <Typography
+                                                variant="body2"
+                                                color="text.secondary"
+                                              >
+                                                Team:{" "}
+                                                <b>
+                                                  {event.opportunity["EP"] ||
+                                                    "N/A"}{" "}
+                                                  /{" "}
+                                                  {event.opportunity["EM"] ||
+                                                    "N/A"}
+                                                </b>
+                                              </Typography>
+                                            </Box>
+
+                                            {event.opportunity[
+                                              "Service Offering 1"
+                                            ] && (
+                                              <Box
+                                                sx={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  mb: 1,
+                                                }}
+                                              >
+                                                <CallMadeIcon
+                                                  fontSize="small"
+                                                  sx={{
+                                                    mr: 1,
+                                                    color: "text.secondary",
+                                                  }}
+                                                />
+                                                <Typography
+                                                  variant="body2"
+                                                  color="text.secondary"
+                                                >
+                                                  Offering:{" "}
+                                                  <b>
+                                                    {
+                                                      event.opportunity[
+                                                        "Service Offering 1"
+                                                      ]
+                                                    }
+                                                  </b>
+                                                </Typography>
+                                              </Box>
+                                            )}
+
+                                            {event.opportunity[
+                                              "Project Type"
+                                            ] && (
+                                              <Box
+                                                sx={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  mb: 1,
+                                                }}
+                                              >
+                                                <AccountTreeIcon
+                                                  fontSize="small"
+                                                  sx={{
+                                                    mr: 1,
+                                                    color: "text.secondary",
+                                                  }}
+                                                />
+                                                <Typography
+                                                  variant="body2"
+                                                  color="text.secondary"
+                                                >
+                                                  Project Type:{" "}
+                                                  <b>
+                                                    {
+                                                      event.opportunity[
+                                                        "Project Type"
+                                                      ]
+                                                    }
+                                                  </b>
+                                                </Typography>
+                                              </Box>
+                                            )}
+                                          </Grid>
+                                        </Grid>
+                                      </Box>
+                                    </CardContent>
+                                  </Card>
+                                </Collapse>
+
+                                {/* Date label next to dot */}
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    position: "absolute",
+                                    right: "-75%",
+                                    top: 0,
+                                    whiteSpace: "nowrap",
+                                    fontSize: "0.7rem",
+                                    color: "text.secondary",
+                                    backgroundColor: alpha(
+                                      theme.palette.background.paper,
+                                      0.8
+                                    ),
+                                    px: 0.5,
+                                    borderRadius: 1,
+                                    pointerEvents: "none",
+                                  }}
+                                >
+                                  {event.date.toLocaleDateString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </Typography>
                               </Box>
-                            </Collapse>
-                          </CardContent>
-                        </Card>
-                      </Box>
+                            );
+                          })}
+                        </Box>
+                      ))}
                     </Box>
-                  );
-                })}
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      flex: 1,
+                      p: 4,
+                      textAlign: "center",
+                      borderRadius: 2,
+                      border: `1px dashed ${alpha(
+                        theme.palette.primary.main,
+                        0.2
+                      )}`,
+                      bgcolor: alpha(theme.palette.primary.main, 0.02),
+                    }}
+                  >
+                    <TimelineIcon
+                      color="disabled"
+                      sx={{ fontSize: 48, mb: 2 }}
+                    />
+                    <Typography variant="body1" color="text.secondary">
+                      No timeline events found for this jobcode.
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             </Paper>
           </Grid>
