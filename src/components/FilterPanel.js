@@ -112,17 +112,23 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
           )}
         </Typography>
 
-        {activeFilterCount > 0 && (
-          <Button
-            variant="text"
-            color="primary"
-            size="small"
-            startIcon={<ClearIcon />}
-            onClick={handleClearFilters}
-          >
-            Clear All
-          </Button>
-        )}
+        {/* Fixed-width container for the Clear All button */}
+        <Box sx={{ minWidth: "90px", textAlign: "right" }}>
+          {activeFilterCount > 0 ? (
+            <Button
+              variant="text"
+              color="primary"
+              size="small"
+              startIcon={<ClearIcon />}
+              onClick={handleClearFilters}
+            >
+              Clear All
+            </Button>
+          ) : (
+            /* Placeholder to maintain spacing when button is not visible */
+            <Box sx={{ visibility: "hidden", width: "90px", height: "32px" }} />
+          )}
+        </Box>
       </Box>
 
       <Grid container spacing={3}>
