@@ -291,9 +291,10 @@ const OpportunityList = ({
   title,
   selectedOpportunities,
   onSelectionChange,
+  defaultRowsPerPage = 10, // Add this line with a default value of 10
 }) => {
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(defaultRowsPerPage); // Use the prop here
   const theme = useTheme();
   const [order, setOrder] = useState("desc");
   const [orderBy, setOrderBy] = useState("Opportunity ID");
