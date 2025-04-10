@@ -14,10 +14,9 @@ import {
   Typography,
   Grid,
   useTheme,
+  TextField,
+  Autocomplete,
 } from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import ClearIcon from "@mui/icons-material/Clear";
 
 import { getUniqueValues } from "../utils/dataUtils";
@@ -38,6 +37,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
   const [filterOptions, setFilterOptions] = useState({
     manager: [],
     partner: [],
+    accounts: [],
   });
 
   const theme = useTheme();
@@ -48,6 +48,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
       setFilterOptions({
         manager: getUniqueValues(data, "Manager"),
         partner: getUniqueValues(data, "Partner"),
+        accounts: getUniqueValues(data, "Account"),
       });
     }
   }, [data]);
@@ -57,15 +58,13 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
     onFilterChange({ [name]: value });
   };
 
-  const handleDateChange = (index, date) => {
-    const newDateRange = [...filters.dateRange];
-    newDateRange[index] = date;
-    onFilterChange({ dateRange: newDateRange });
+  const handleAccountChange = (event, newValue) => {
+    onFilterChange({ accounts: newValue || [] });
   };
 
   const handleClearFilters = () => {
     onFilterChange({
-      dateRange: [null, null],
+      accounts: [],
       manager: [],
       partner: [],
     });
@@ -73,9 +72,9 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
 
   const getActiveFilterCount = () => {
     let count = 0;
-    if (filters.dateRange[0] && filters.dateRange[1]) count++;
-    if (filters.manager.length > 0) count++;
-    if (filters.partner.length > 0) count++;
+    if (filters.accounts && filters.accounts.length > 0) count++;
+    if (filters.manager && filters.manager.length > 0) count++;
+    if (filters.partner && filters.partner.length > 0) count++;
     return count;
   };
 
@@ -127,44 +126,39 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
       </Box>
 
       <Grid container spacing={3}>
-        {/* Date Range Filters */}
-        <Grid item xs={12} md={6}>
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <DatePicker
-                  label="From Date"
-                  value={filters.dateRange[0]}
-                  onChange={(date) => handleDateChange(0, date)}
-                  slotProps={{
-                    textField: {
-                      size: "small",
-                      fullWidth: true,
-                      variant: "outlined",
-                    },
-                  }}
+        {/* Account Filter */}
+        <Grid item xs={12}>
+          <Autocomplete
+            multiple
+            id="account-filter"
+            options={filterOptions.accounts || []}
+            value={filters.accounts || []}
+            onChange={handleAccountChange}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip
+                  key={option}
+                  label={option}
+                  {...getTagProps({ index })}
+                  size="small"
                 />
-              </Grid>
-              <Grid item xs={6}>
-                <DatePicker
-                  label="To Date"
-                  value={filters.dateRange[1]}
-                  onChange={(date) => handleDateChange(1, date)}
-                  slotProps={{
-                    textField: {
-                      size: "small",
-                      fullWidth: true,
-                      variant: "outlined",
-                    },
-                  }}
-                />
-              </Grid>
-            </Grid>
-          </LocalizationProvider>
+              ))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Accounts"
+                variant="outlined"
+                placeholder="Select accounts"
+                fullWidth
+              />
+            )}
+            filterSelectedOptions
+          />
         </Grid>
 
-        <Grid item xs={12} md={3}>
-          {/* Manager Filter */}
+        {/* Manager Filter */}
+        <Grid item xs={12} md={6}>
           <FormControl fullWidth>
             <InputLabel id="manager-label">Manager</InputLabel>
             <Select
@@ -172,7 +166,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
               id="manager"
               multiple
               name="manager"
-              value={filters.manager}
+              value={filters.manager || []}
               onChange={handleChange}
               input={<OutlinedInput label="Manager" />}
               renderValue={(selected) => (
@@ -183,14 +177,11 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
                 </Box>
               )}
               MenuProps={MenuProps}
-              size="small"
             >
               {filterOptions.manager.map((option) => (
                 <MenuItem key={option} value={option}>
                   <Checkbox
-                    checked={filters.manager.indexOf(option) > -1}
-                    size="small"
-                    color="primary"
+                    checked={(filters.manager || []).indexOf(option) > -1}
                   />
                   <ListItemText primary={option} />
                 </MenuItem>
@@ -200,7 +191,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
         </Grid>
 
         {/* Partner Filter */}
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} md={6}>
           <FormControl fullWidth>
             <InputLabel id="partner-label">Partner</InputLabel>
             <Select
@@ -208,7 +199,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
               id="partner"
               multiple
               name="partner"
-              value={filters.partner}
+              value={filters.partner || []}
               onChange={handleChange}
               input={<OutlinedInput label="Partner" />}
               renderValue={(selected) => (
@@ -219,14 +210,11 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
                 </Box>
               )}
               MenuProps={MenuProps}
-              size="small"
             >
               {filterOptions.partner.map((option) => (
                 <MenuItem key={option} value={option}>
                   <Checkbox
-                    checked={filters.partner.indexOf(option) > -1}
-                    size="small"
-                    color="primary"
+                    checked={(filters.partner || []).indexOf(option) > -1}
                   />
                   <ListItemText primary={option} />
                 </MenuItem>
