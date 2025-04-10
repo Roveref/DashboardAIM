@@ -30,6 +30,7 @@ import FilterPanel from "./components/FilterPanel";
 import FileUploader from "./components/FileUploader";
 import { processExcelData, getUniqueValues } from "./utils/dataUtils";
 import theme from "./theme";
+import JobcodeTimelineTab from "./components/JobcodeTimelineTab";
 
 // Sidebar width definition
 const LEFT_DRAWER_WIDTH = 240;
@@ -448,8 +449,11 @@ function App() {
     } else if (activeTab === 1) {
       // Bookings Tab: Status 14
       return filteredData.filter((item) => item["Status"] === 14);
-    } else {
+    } else if (activeTab === 2) {
       // Service Lines Tab: All data
+      return filteredData;
+    } else if (activeTab === 3) {
+      // Jobcode Timeline Tab: All data
       return filteredData;
     }
   };
@@ -957,6 +961,24 @@ function App() {
                     }
                     iconPosition="start"
                   />
+                  <Tab
+                    label="Jobcode Timeline"
+                    icon={
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          bgcolor: theme.palette.info.main,
+                          display: "inline-block",
+                          mr: 1,
+                          verticalAlign: "middle",
+                          mb: 0.5,
+                        }}
+                      />
+                    }
+                    iconPosition="start"
+                  />
                 </Tabs>
               )}
 
@@ -1111,6 +1133,14 @@ function App() {
                   {activeTab === 2 && (
                     <ServiceLinesTab
                       data={getTabData()}
+                      loading={loading}
+                      onSelection={handleSelection}
+                      selectedOpportunities={selectedOpportunities}
+                    />
+                  )}
+                  {activeTab === 3 && (
+                    <JobcodeTimelineTab
+                      data={data} // Note: Using all data, not filtered data from getTabData()
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
