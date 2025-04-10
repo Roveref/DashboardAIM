@@ -223,6 +223,22 @@ function App() {
 
     // Handle service line filtering and allocation separately
     if (safeFilters.serviceLine1?.length > 0) {
+      // Get all unique service lines in the data
+      const allServiceLines = new Set();
+      data.forEach((item) => {
+        if (item["Service Line 1"]) allServiceLines.add(item["Service Line 1"]);
+        if (item["Service Line 2"]) allServiceLines.add(item["Service Line 2"]);
+        if (item["Service Line 3"]) allServiceLines.add(item["Service Line 3"]);
+      });
+
+      // Check if all service lines are selected
+      const isAllServiceLinesSelected =
+        safeFilters.serviceLine1.length > 0 &&
+        allServiceLines.size > 0 &&
+        [...allServiceLines].every((line) =>
+          safeFilters.serviceLine1.includes(line)
+        );
+
       // Find opportunities that have the selected service line in any of the three service line positions
       result = result.filter(
         (item) =>
@@ -237,34 +253,108 @@ function App() {
       // Apply service line allocation percentages
       result = result.map((item) => {
         let newItem = { ...item };
+
+        // Special case: if all service lines are selected, use 100% allocation
+        if (isAllServiceLinesSelected) {
+          newItem["Allocated Gross Revenue"] = newItem["Gross Revenue"];
+          newItem["Allocated Net Revenue"] = newItem["Net Revenue"] || 0;
+          newItem["Is Allocated"] = false; // Not really allocated if using 100%
+          newItem["Allocation Percentage"] = 100;
+          newItem["Allocated Service Line"] = "All Service Lines";
+          return newItem;
+        }
+
+        // Regular case: calculate allocation based on matching service lines
         let allocation = 0;
         let allocatedServiceLine = "";
 
-        // Check if any of the service lines match and calculate allocation percentage
+        // Check if multiple service lines match the filters
+        let matchingLines = [];
+        let totalAllocation = 0;
+
+        // Check primary service line
         if (
           newItem["Service Line 1"] &&
           safeFilters.serviceLine1.includes(newItem["Service Line 1"]) &&
           newItem["Service Offering 1 %"]
         ) {
-          allocation = parseFloat(newItem["Service Offering 1 %"]) / 100;
-          allocatedServiceLine = newItem["Service Line 1"];
-        } else if (
+          const lineAllocation =
+            parseFloat(newItem["Service Offering 1 %"]) / 100;
+          matchingLines.push({
+            line: newItem["Service Line 1"],
+            allocation: lineAllocation,
+          });
+          totalAllocation += lineAllocation;
+        }
+
+        // Check secondary service line
+        if (
           newItem["Service Line 2"] &&
           safeFilters.serviceLine1.includes(newItem["Service Line 2"]) &&
           newItem["Service Offering 2 %"]
         ) {
-          allocation = parseFloat(newItem["Service Offering 2 %"]) / 100;
-          allocatedServiceLine = newItem["Service Line 2"];
-        } else if (
+          const lineAllocation =
+            parseFloat(newItem["Service Offering 2 %"]) / 100;
+          matchingLines.push({
+            line: newItem["Service Line 2"],
+            allocation: lineAllocation,
+          });
+          totalAllocation += lineAllocation;
+        }
+
+        // Check tertiary service line
+        if (
           newItem["Service Line 3"] &&
           safeFilters.serviceLine1.includes(newItem["Service Line 3"]) &&
           newItem["Service Offering 3 %"]
         ) {
-          allocation = parseFloat(newItem["Service Offering 3 %"]) / 100;
-          allocatedServiceLine = newItem["Service Line 3"];
-        } else {
-          // If we can't find a percentage, default to 100%
-          allocation = 1;
+          const lineAllocation =
+            parseFloat(newItem["Service Offering 3 %"]) / 100;
+          matchingLines.push({
+            line: newItem["Service Line 3"],
+            allocation: lineAllocation,
+          });
+          totalAllocation += lineAllocation;
+        }
+
+        // If no matching lines with percentages found, default to using the first matching line with 100%
+        if (matchingLines.length === 0) {
+          if (
+            newItem["Service Line 1"] &&
+            safeFilters.serviceLine1.includes(newItem["Service Line 1"])
+          ) {
+            allocation = 1;
+            allocatedServiceLine = newItem["Service Line 1"];
+          } else if (
+            newItem["Service Line 2"] &&
+            safeFilters.serviceLine1.includes(newItem["Service Line 2"])
+          ) {
+            allocation = 1;
+            allocatedServiceLine = newItem["Service Line 2"];
+          } else if (
+            newItem["Service Line 3"] &&
+            safeFilters.serviceLine1.includes(newItem["Service Line 3"])
+          ) {
+            allocation = 1;
+            allocatedServiceLine = newItem["Service Line 3"];
+          } else {
+            allocation = 1;
+          }
+        }
+        // If we have exactly one matching line
+        else if (matchingLines.length === 1) {
+          allocation = matchingLines[0].allocation;
+          allocatedServiceLine = matchingLines[0].line;
+        }
+        // If we have multiple matching lines, use the total allocation
+        else {
+          allocation = Math.min(totalAllocation, 1); // Cap at 100%
+          allocatedServiceLine = matchingLines.map((m) => m.line).join(", ");
+
+          // If total allocation exceeds 100%, note this in the allocated service line
+          if (totalAllocation > 1) {
+            allocatedServiceLine += " (capped at 100%)";
+          }
         }
 
         // Apply allocation
@@ -277,17 +367,6 @@ function App() {
         newItem["Allocation Percentage"] = allocation * 100;
         newItem["Allocated Service Line"] = allocatedServiceLine;
 
-        return newItem;
-      });
-    } else {
-      // Reset allocations if no service line filter
-      result = result.map((item) => {
-        const newItem = { ...item };
-        newItem["Allocated Gross Revenue"] = newItem["Gross Revenue"];
-        newItem["Allocated Net Revenue"] = newItem["Net Revenue"];
-        newItem["Is Allocated"] = false;
-        newItem["Allocation Percentage"] = 100;
-        newItem["Allocated Service Line"] = "";
         return newItem;
       });
     }
@@ -387,6 +466,8 @@ function App() {
 
   // Left sidebar content - Sub Segment Code filters
   // Left sidebar content - Sub Segment Code filters
+  // The updated leftSidebarContent with fixed layout and added divider
+
   const leftSidebarContent = (
     <Box sx={{ p: 3 }}>
       <Typography
@@ -398,7 +479,10 @@ function App() {
         Segments
       </Typography>
 
-      {/* Segment Code filter */}
+      {/* Added divider to match right sidebar */}
+      <Divider sx={{ mb: 3, borderColor: theme.palette.primary.light }} />
+
+      {/* Segment Code filter with fixed layout */}
       <Box
         sx={{
           mb: 2,
@@ -414,18 +498,25 @@ function App() {
         >
           Segment Codes
         </Typography>
-        {filters.subSegmentCodes && filters.subSegmentCodes.length > 0 && (
-          <Button
-            variant="text"
-            color="primary"
-            size="small"
-            startIcon={<ClearIcon />}
-            onClick={() => handleClearFilterType("subSegmentCodes")}
-            sx={{ minWidth: "auto", p: 0.5 }}
-          >
-            Clear All
-          </Button>
-        )}
+
+        {/* Fixed-width container for the Clear All button */}
+        <Box sx={{ minWidth: "80px", textAlign: "right" }}>
+          {filters.subSegmentCodes && filters.subSegmentCodes.length > 0 ? (
+            <Button
+              variant="text"
+              color="primary"
+              size="small"
+              startIcon={<ClearIcon />}
+              onClick={() => handleClearFilterType("subSegmentCodes")}
+              sx={{ minWidth: "auto", p: 0.5 }}
+            >
+              Clear All
+            </Button>
+          ) : (
+            /* Placeholder to maintain spacing when button is not visible */
+            <Box sx={{ visibility: "hidden", width: "80px", height: "32px" }} />
+          )}
+        </Box>
       </Box>
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mb: 3 }}>
@@ -439,6 +530,7 @@ function App() {
             onChange={() => handleToggleFilter("subSegmentCodes", code)}
             sx={{
               justifyContent: "flex-start",
+              textAlign: "left",
               borderRadius: 2,
               px: 2,
               py: 1,
@@ -462,6 +554,9 @@ function App() {
                 borderColor: alpha(theme.palette.primary.main, 0.3),
               },
               transition: "all 0.2s ease-in-out",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
             {code}
@@ -490,18 +585,27 @@ function App() {
               >
                 Sub Segments
               </Typography>
-              {filters.subSegments && filters.subSegments.length > 0 && (
-                <Button
-                  variant="text"
-                  color="primary"
-                  size="small"
-                  startIcon={<ClearIcon />}
-                  onClick={() => handleClearFilterType("subSegments")}
-                  sx={{ minWidth: "auto", p: 0.5 }}
-                >
-                  Clear All
-                </Button>
-              )}
+
+              {/* Fixed-width container for the Clear All button */}
+              <Box sx={{ minWidth: "80px", textAlign: "right" }}>
+                {filters.subSegments && filters.subSegments.length > 0 ? (
+                  <Button
+                    variant="text"
+                    color="primary"
+                    size="small"
+                    startIcon={<ClearIcon />}
+                    onClick={() => handleClearFilterType("subSegments")}
+                    sx={{ minWidth: "auto", p: 0.5 }}
+                  >
+                    Clear All
+                  </Button>
+                ) : (
+                  /* Placeholder to maintain spacing when button is not visible */
+                  <Box
+                    sx={{ visibility: "hidden", width: "80px", height: "32px" }}
+                  />
+                )}
+              </Box>
             </Box>
 
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
@@ -515,6 +619,7 @@ function App() {
                   onChange={() => handleToggleFilter("subSegments", segment)}
                   sx={{
                     justifyContent: "flex-start",
+                    textAlign: "left",
                     borderRadius: 2,
                     px: 2,
                     py: 1,
@@ -538,6 +643,9 @@ function App() {
                       borderColor: alpha(theme.palette.info.main, 0.3),
                     },
                     transition: "all 0.2s ease-in-out",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
                 >
                   {segment}
@@ -549,7 +657,8 @@ function App() {
     </Box>
   );
 
-  // Right sidebar content - Service Line filters with improved design
+  // The updated rightSidebarContent with fixed layout to prevent shifting
+
   const rightSidebarContent = (
     <Box sx={{ p: 3 }}>
       <Typography
@@ -577,18 +686,25 @@ function App() {
         >
           Filter by Service
         </Typography>
-        {filters.serviceLine1 && filters.serviceLine1.length > 0 && (
-          <Button
-            variant="text"
-            color="secondary"
-            size="small"
-            startIcon={<ClearIcon />}
-            onClick={() => handleClearFilterType("serviceLine1")}
-            sx={{ minWidth: "auto", p: 0.5 }}
-          >
-            Clear All
-          </Button>
-        )}
+
+        {/* Fixed-width container for the Clear All button */}
+        <Box sx={{ minWidth: "80px", textAlign: "right" }}>
+          {filters.serviceLine1 && filters.serviceLine1.length > 0 ? (
+            <Button
+              variant="text"
+              color="secondary"
+              size="small"
+              startIcon={<ClearIcon />}
+              onClick={() => handleClearFilterType("serviceLine1")}
+              sx={{ minWidth: "auto", p: 0.5 }}
+            >
+              Clear All
+            </Button>
+          ) : (
+            /* Placeholder to maintain spacing when button is not visible */
+            <Box sx={{ visibility: "hidden", width: "80px", height: "32px" }} />
+          )}
+        </Box>
       </Box>
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
@@ -615,6 +731,7 @@ function App() {
               onChange={() => handleToggleFilter("serviceLine1", line)}
               sx={{
                 justifyContent: "flex-start",
+                textAlign: "left",
                 borderRadius: 2,
                 px: 2,
                 py: 1,
@@ -644,6 +761,9 @@ function App() {
                   borderColor: alpha(buttonColor, 0.3),
                 },
                 transition: "all 0.2s ease-in-out",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {line}
@@ -653,7 +773,6 @@ function App() {
       </Box>
     </Box>
   );
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
