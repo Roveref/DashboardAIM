@@ -1,1114 +1,1185 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
+  Grid,
   Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TablePagination,
   Typography,
   Box,
-  Chip,
-  IconButton,
-  Tooltip,
-  Collapse,
   Card,
   CardContent,
-  Grid,
-  alpha,
+  CircularProgress,
+  Divider,
   useTheme,
-  TableSortLabel,
-  Button,
+  alpha,
+  Fade,
+  Chip,
+  Stack,
 } from "@mui/material";
-import InfoIcon from "@mui/icons-material/Info";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import FilterListOffIcon from "@mui/icons-material/FilterListOff";
+import {
+  BarChart,
+  Bar,
+  LabelList,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Label,
+} from "recharts";
+import OpportunityList from "./OpportunityList";
+import { sumBy, groupDataBy } from "../utils/dataUtils";
+import ArrowRightAltIcon from "@mui/icons-material/ArrowRightAlt";
+import PipelineInsights from "./PipelineInsights";
 
-// Status colors mapping
-const statusColors = {
-  1: "primary", // Earliest pipeline stages
-  4: "primary", // Mid pipeline
-  6: "primary", // Mid pipeline
-  11: "primary", // Last pipeline stage
-  14: "success", // Bookings
-  15: "error", // Lost
+// Status mapping for better readability
+const statusMap = {
+  1: "1 - New Lead",
+  4: "4 - Go Approved",
+  6: "6 - Proposal Delivered",
+  11: "11 - Final Negotiation",
 };
 
-// Status text mapping
-const statusText = {
-  1: "New Lead",
-  4: "Go Approved",
-  6: "Proposal Delivered",
-  11: "Final Negotiation",
-  14: "Booked",
-  15: "Lost",
-};
+// Define all possible statuses to ensure complete representation
+const ALL_STATUSES = [
+  { status: "1 - New Lead", statusNumber: 1 },
+  { status: "4 - Go Approved", statusNumber: 4 },
+  { status: "6 - Proposal Delivered", statusNumber: 6 },
+  { status: "11 - Final Negotiation", statusNumber: 11 },
+];
 
-// Row component with expandable details
-const OpportunityRow = ({ row, isSelected, onRowClick }) => {
-  const [open, setOpen] = useState(false);
+const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
+  const [pipelineByStatus, setPipelineByStatus] = useState([]);
+  const [pipelineByServiceLine, setPipelineByServiceLine] = useState([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [allocatedRevenue, setAllocatedRevenue] = useState(0);
+  const [filteredOpportunities, setFilteredOpportunities] = useState([]);
   const theme = useTheme();
+  const [isAllocated, setIsAllocated] = useState(false);
+  const [allocatedServiceLine, setAllocatedServiceLine] = useState("");
 
-  return (
-    <>
-      <TableRow
-        hover
-        onClick={() => onRowClick(row)}
-        selected={isSelected}
+  // Custom colors for charts
+  const COLORS = [
+    theme.palette.primary.main,
+    theme.palette.secondary.main,
+    theme.palette.success.main,
+    theme.palette.warning.main,
+    theme.palette.info.main,
+    theme.palette.error.main,
+    "#8884d8",
+  ];
+  const prepareStackedServiceLineData = () => {
+    // Create a map for status categories
+    const statusCategories = {
+      early: [1], // Early pipeline (New Lead)
+      mid: [4, 6], // Mid pipeline (Go Approved, Proposal Delivered)
+      late: [11], // Late pipeline (Final Negotiation)
+    };
+
+    // Group by service line first
+    const serviceLineGroups = {};
+
+    filteredOpportunities.forEach((opp) => {
+      const serviceLine = opp["Service Line 1"] || "Uncategorized";
+      if (!serviceLineGroups[serviceLine]) {
+        serviceLineGroups[serviceLine] = {
+          name: serviceLine,
+          early: 0,
+          mid: 0,
+          late: 0,
+          total: 0,
+        };
+      }
+
+      // Add to the right status category
+      if (statusCategories.early.includes(opp.Status)) {
+        serviceLineGroups[serviceLine].early += opp["Gross Revenue"] || 0;
+      } else if (statusCategories.mid.includes(opp.Status)) {
+        serviceLineGroups[serviceLine].mid += opp["Gross Revenue"] || 0;
+      } else if (statusCategories.late.includes(opp.Status)) {
+        serviceLineGroups[serviceLine].late += opp["Gross Revenue"] || 0;
+      }
+
+      // Add to total
+      serviceLineGroups[serviceLine].total += opp["Gross Revenue"] || 0;
+    });
+
+    // Convert to array and sort by total
+    return Object.values(serviceLineGroups).sort((a, b) => b.total - a.total);
+  };
+
+  // Then in your render method:
+  const stackedServiceLineData = prepareStackedServiceLineData();
+  const calculateMedianOpportunitySize = (opportunities) => {
+    if (!opportunities || opportunities.length === 0) return 0;
+
+    // Get revenue values and sort them
+    const revenueValues = opportunities
+      .map((opp) => {
+        return opp["Is Allocated"]
+          ? opp["Allocated Gross Revenue"] || 0
+          : opp["Gross Revenue"] || 0;
+      })
+      .sort((a, b) => a - b);
+
+    const len = revenueValues.length;
+
+    // Calculate median
+    let median;
+    if (len % 2 === 0) {
+      // Even number of items
+      median = (revenueValues[len / 2 - 1] + revenueValues[len / 2]) / 2;
+    } else {
+      // Odd number of items
+      median = revenueValues[Math.floor(len / 2)];
+    }
+
+    return median;
+  };
+  const calculateFilteredMedianOpportunitySize = (opportunities) => {
+    if (!opportunities || opportunities.length === 0) return 0;
+
+    // Get allocated revenue values and sort them
+    const revenueValues = opportunities
+      .map((opp) => {
+        // Use allocated revenue values for the filtered median
+        return opp["Allocated Gross Revenue"] || 0;
+      })
+      .sort((a, b) => a - b);
+
+    const len = revenueValues.length;
+
+    // Calculate median
+    let median;
+    if (len % 2 === 0) {
+      // Even number of items
+      median = (revenueValues[len / 2 - 1] + revenueValues[len / 2]) / 2;
+    } else {
+      // Odd number of items
+      median = revenueValues[Math.floor(len / 2)];
+    }
+
+    return median;
+  };
+  const calculateSizeDistribution = (opportunities) => {
+    // Define size ranges
+    const ranges = [
+      {
+        name: "< €100K",
+        min: 0,
+        max: 100000,
+        count: 0,
+        value: 0,
+        color: theme.palette.primary.light,
+      },
+      {
+        name: "€100K-€500K",
+        min: 100000,
+        max: 500000,
+        count: 0,
+        value: 0,
+        color: theme.palette.primary.main,
+      },
+      {
+        name: "> €500K",
+        min: 500000,
+        max: Infinity,
+        count: 0,
+        value: 0,
+        color: theme.palette.primary.dark,
+      },
+    ];
+
+    // Calculate counts and values for each range
+    opportunities.forEach((opp) => {
+      const revenue = opp["Is Allocated"]
+        ? opp["Allocated Gross Revenue"] || 0
+        : opp["Gross Revenue"] || 0;
+
+      for (const range of ranges) {
+        if (revenue >= range.min && revenue < range.max) {
+          range.count++;
+          range.value += revenue;
+          break;
+        }
+      }
+    });
+
+    // Calculate percentages
+    const totalValue = ranges.reduce((sum, range) => sum + range.value, 0);
+    ranges.forEach((range) => {
+      range.percentage = totalValue > 0 ? (range.value / totalValue) * 100 : 0;
+    });
+
+    return ranges;
+  };
+  useEffect(() => {
+    if (!data || loading) return;
+
+    // Reset filtered opportunities when data changes
+    setFilteredOpportunities(data);
+
+    // Check if we're using allocated revenue
+    const hasAllocatedData =
+      data.length > 0 &&
+      data.some(
+        (item) =>
+          item["Allocated Gross Revenue"] !== undefined ||
+          (item["Allocation Percentage"] !== undefined &&
+            item["Gross Revenue"] !== undefined)
+      );
+
+    const isUsingAllocation =
+      hasAllocatedData && data[0] && data[0]["Allocated Service Line"];
+    setIsAllocated(isUsingAllocation);
+
+    // Find the service line being allocated
+    if (isUsingAllocation) {
+      const allocatedItem = data.find(
+        (item) =>
+          item["Allocated Service Line"] ||
+          item["Allocation Percentage"] !== undefined
+      );
+
+      if (allocatedItem && allocatedItem["Allocated Service Line"]) {
+        setAllocatedServiceLine(allocatedItem["Allocated Service Line"]);
+      } else if (allocatedItem && allocatedItem["Service Line 1"]) {
+        setAllocatedServiceLine(allocatedItem["Service Line 1"]);
+      } else {
+        setAllocatedServiceLine("");
+      }
+    } else {
+      setAllocatedServiceLine("");
+    }
+
+    // Calculate both total pipeline revenue and allocated revenue
+    let total = 0;
+    let allocated = 0;
+
+    data.forEach((item) => {
+      const grossRevenue =
+        typeof item["Gross Revenue"] === "number" ? item["Gross Revenue"] : 0;
+      total += grossRevenue;
+
+      const allocatedGrossRevenue =
+        typeof item["Allocated Gross Revenue"] === "number"
+          ? item["Allocated Gross Revenue"]
+          : 0;
+      allocated += allocatedGrossRevenue;
+    });
+
+    setTotalRevenue(total);
+    setAllocatedRevenue(allocated);
+
+    // Use the appropriate revenue field for all charts
+    const revenueField = isUsingAllocation
+      ? "Allocated Gross Revenue"
+      : "Gross Revenue";
+
+    // Modified to ensure ALL statuses are represented
+    const byStatus = ALL_STATUSES.map((statusInfo) => {
+      // Find opportunities for this specific status
+      const opportunities = data.filter(
+        (item) => item["Status"] === statusInfo.statusNumber
+      );
+
+      // Calculate total revenue for this status
+      const value = opportunities.reduce((sum, item) => {
+        const revenue = isUsingAllocation
+          ? item["Allocated Gross Revenue"] || 0
+          : item["Gross Revenue"] || 0;
+        return sum + revenue;
+      }, 0);
+
+      return {
+        status: statusInfo.status,
+        value: value,
+        count: opportunities.length,
+        statusNumber: statusInfo.statusNumber,
+      };
+    });
+
+    setPipelineByStatus(byStatus);
+
+    // Group data by service line for pie chart
+    const byServiceLine = Object.entries(groupDataBy(data, "Service Line 1"))
+      .map(([serviceLine, opportunities]) => ({
+        name: serviceLine,
+        value: sumBy(opportunities, revenueField),
+        count: opportunities.length,
+      }))
+      .sort((a, b) => b.value - a.value); // Sort by value descending
+    setPipelineByServiceLine(byServiceLine);
+  }, [data, loading]);
+
+  const handleChartClick = (chartEvent) => {
+    if (
+      !chartEvent ||
+      !chartEvent.activePayload ||
+      chartEvent.activePayload.length === 0
+    )
+      return;
+
+    const clickedItem = chartEvent.activePayload[0].payload;
+
+    // Filter opportunities based on clicked chart segment
+    let filtered;
+
+    if (clickedItem.status) {
+      // Clicked on status chart
+      const statusNumber = parseInt(clickedItem.status.split(" ")[0]);
+      filtered = data.filter((opp) => opp.Status === statusNumber);
+    } else if (clickedItem.name) {
+      // Clicked on service line chart
+      filtered = data.filter(
+        (opp) => opp["Service Line 1"] === clickedItem.name
+      );
+    }
+
+    if (filtered && filtered.length > 0) {
+      setFilteredOpportunities(filtered);
+    }
+  };
+
+  // Calculate allocation percentage, handling the 100% case
+  const allocationPercentage =
+    totalRevenue > 0 && isAllocated
+      ? Math.abs((allocatedRevenue / totalRevenue) * 100)
+      : isAllocated
+      ? 100
+      : 0; // If we have allocation but can't calculate, assume 100%
+
+  // Custom tooltip for revenue charts
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <Card
+          sx={{
+            p: 1.5,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+            maxWidth: 200,
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 0.5 }}>
+            {`${label || payload[0].name}`}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {`Revenue: ${new Intl.NumberFormat("en-US", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(payload[0].value)}`}
+          </Typography>
+          {payload[0].payload.count && (
+            <Typography variant="body2" color="text.secondary">
+              {`Count: ${payload[0].payload.count} opportunities`}
+            </Typography>
+          )}
+        </Card>
+      );
+    }
+    return null;
+  };
+
+  if (loading) {
+    return (
+      <Box
         sx={{
-          "&:last-child td, &:last-child th": { border: 0 },
-          cursor: "pointer",
-          transition: "background-color 0.2s",
-          "&.Mui-selected": {
-            backgroundColor: alpha(theme.palette.primary.main, 0.08),
-            "&:hover": {
-              backgroundColor: alpha(theme.palette.primary.main, 0.12),
-            },
-          },
-          "&:hover": {
-            backgroundColor: alpha(theme.palette.primary.main, 0.04),
-          },
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "400px",
         }}
       >
-        <TableCell
-          padding="checkbox"
-          sx={{ width: 48, minWidth: 48, maxWidth: 48 }}
-        >
-          <IconButton
-            aria-label="expand row"
-            size="small"
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpen(!open);
-            }}
-          >
-            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-          </IconButton>
-        </TableCell>
-        <TableCell
-          component="th"
-          scope="row"
-          padding="none"
-          sx={{ width: 120, minWidth: 120, maxWidth: 120 }}
-        >
-          <Typography
-            variant="body2"
-            fontWeight={500}
-            sx={{
-              ml: 1,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {row["Opportunity ID"]}
-          </Typography>
-        </TableCell>
-        <TableCell sx={{ width: "25%", minWidth: 180 }}>
-          <Typography
-            variant="body2"
-            fontWeight={isSelected ? 600 : 400}
-            sx={{
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {row["Opportunity"]}
-          </Typography>
-        </TableCell>
-        <TableCell sx={{ width: 120, minWidth: 120, maxWidth: 120 }}>
-          <Chip
-            label={statusText[row["Status"]] || `Status ${row["Status"]}`}
-            color={statusColors[row["Status"]] || "default"}
-            size="small"
-            variant="filled"
-            sx={{ fontWeight: 500 }}
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Fade in={!loading} timeout={500}>
+      <Grid container spacing={3}>
+        {/* Summary Cards */}
+        {/* Summary Cards - First Row */}
+        <Grid item xs={12}>
+          <PipelineInsights
+            data={data}
+            isFiltered={filteredOpportunities.length !== data.length}
           />
-        </TableCell>
-        <TableCell
-          align="right"
-          sx={{ width: 150, minWidth: 150, maxWidth: 150 }}
-        >
-          <Typography variant="body2" fontWeight={500}>
-            {row["Is Allocated"] ? (
-              <>
-                {typeof row["Allocated Gross Revenue"] === "number"
-                  ? new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(row["Allocated Gross Revenue"])
-                  : row["Allocated Gross Revenue"]}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                >
-                  {row["Allocation Percentage"]}% of{" "}
-                  {row["Allocated Service Line"]}
-                </Typography>
-              </>
-            ) : typeof row["Gross Revenue"] === "number" ? (
-              new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "EUR",
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              }).format(row["Gross Revenue"])
-            ) : (
-              row["Gross Revenue"]
-            )}
-          </Typography>
-        </TableCell>
-        <TableCell sx={{ width: "25%", minWidth: 150 }}>
-          <Typography
-            variant="body2"
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card
             sx={{
-              whiteSpace: "nowrap",
+              height: "100%",
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+              position: "relative",
               overflow: "hidden",
-              textOverflow: "ellipsis",
+              borderRadius: 3,
             }}
           >
-            {row["Account"]}
-          </Typography>
-        </TableCell>
-        <TableCell sx={{ width: "25%", minWidth: 150 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {row["Service Line 1"]}
-          </Typography>
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <Box sx={{ m: 2 }}>
-              <Card
-                variant="outlined"
-                sx={{
-                  borderRadius: 2,
-                  backgroundColor: alpha(theme.palette.background.paper, 0.7),
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
-                  overflow: "hidden",
-                  boxShadow: `0 4px 12px ${alpha(
-                    theme.palette.primary.main,
-                    0.08
-                  )}`,
-                }}
+            <CardContent sx={{ p: 3, height: "100%" }}>
+              {/* Card Title */}
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                color="primary.main"
+                gutterBottom
               >
-                {/* Opportunity Title Banner */}
+                {isAllocated ? "Filtered Pipeline" : "Pipeline Overview"}
+              </Typography>
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* Pipeline Values - Total and Allocated on the same row with arrow */}
+              <Box sx={{ mt: 3, mb: 3 }}>
                 <Box
                   sx={{
-                    p: 2.5,
-                    bgcolor: alpha(theme.palette.primary.main, 0.04),
-                    borderBottom: `1px solid ${alpha(
-                      theme.palette.primary.main,
-                      0.1
-                    )}`,
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    position: "relative",
                   }}
                 >
-                  <Box>
+                  {/* Total Pipeline */}
+                  <Box sx={{ flex: 1 }}>
                     <Typography
-                      variant="h6"
-                      color="primary.main"
-                      fontWeight={700}
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
                     >
-                      {row["Opportunity"]}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      ID: {row["Opportunity ID"]} • Created:{" "}
-                      {new Date(row["Creation Date"]).toLocaleDateString()}
-                    </Typography>
-                  </Box>
-                  <Chip
-                    label={
-                      statusText[row["Status"]] || `Status ${row["Status"]}`
-                    }
-                    color={statusColors[row["Status"]] || "default"}
-                    size="medium"
-                    sx={{ fontWeight: 600, px: 1 }}
-                  />
-                </Box>
-
-                {/* Total Opportunity Amount - Improved Allocation Display */}
-                <Box
-                  sx={{
-                    p: 2.5,
-                    bgcolor: alpha(theme.palette.primary.main, 0.02),
-                    borderBottom: `1px solid ${alpha(
-                      theme.palette.primary.main,
-                      0.1
-                    )}`,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      mb: row["Is Allocated"] ? 1.5 : 0,
-                    }}
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      color="primary.main"
-                    >
-                      Total Opportunity Amount
+                      Total Pipeline Value
                     </Typography>
                     <Typography
-                      variant="h5"
+                      variant="h4"
+                      component="div"
                       fontWeight={700}
-                      color="primary.main"
+                      color="text.primary"
                     >
                       {new Intl.NumberFormat("en-US", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(row["Gross Revenue"] || 0)}
+                      }).format(totalRevenue)}
                     </Typography>
                   </Box>
 
-                  {/* Allocation Information - Only shown when allocated */}
-                  {row["Is Allocated"] && (
+                  {/* Center arrow with percentage - only when allocation is active */}
+                  {isAllocated && (
                     <Box
                       sx={{
-                        mt: 1,
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: alpha(theme.palette.secondary.main, 0.08),
-                        border: `1px solid ${alpha(
-                          theme.palette.secondary.main,
-                          0.2
-                        )}`,
+                        position: "absolute",
+                        left: "50%",
+                        top: "50%",
+                        transform: "translate(-50%, -50%)",
                         display: "flex",
-                        justifyContent: "space-between",
+                        flexDirection: "column",
                         alignItems: "center",
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 4,
+                        bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                        zIndex: 1,
                       }}
                     >
-                      <Box>
-                        <Typography
-                          variant="caption"
-                          fontWeight={500}
-                          color="secondary.main"
-                          sx={{ display: "flex", alignItems: "center" }}
-                        >
+                      <Typography
+                        variant="caption"
+                        color="secondary.main"
+                        fontWeight={600}
+                        sx={{ mb: 0.5 }}
+                      >
+                        {allocationPercentage === 100
+                          ? "100%"
+                          : `${allocationPercentage.toFixed(0)}%`}
+                      </Typography>
+                      <ArrowRightAltIcon color="secondary" fontSize="small" />
+                    </Box>
+                  )}
+
+                  {/* Filtered Value - only when allocation is active */}
+                  {isAllocated ? (
+                    <Box sx={{ flex: 1, textAlign: "right" }}>
+                      <Typography
+                        variant="body2"
+                        color="secondary.main"
+                        gutterBottom
+                      >
+                        Filtered Pipeline Value
+                      </Typography>
+                      <Typography
+                        variant="h4"
+                        component="div"
+                        color="secondary.main"
+                        fontWeight={700}
+                      >
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(allocatedRevenue)}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    // Placeholder to maintain consistent layout
+                    <Box sx={{ flex: 1 }}></Box>
+                  )}
+                </Box>
+              </Box>
+
+              {/* New section: Pipeline breakdown by size ranges */}
+              <Box sx={{ mt: 3 }}>
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={600}
+                  color="text.primary"
+                  gutterBottom
+                >
+                  Pipeline Size Breakdown
+                </Typography>
+
+                {calculateSizeDistribution(filteredOpportunities).map(
+                  (range, index) => (
+                    <Box key={range.name} sx={{ mb: 2 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          mb: 0.5,
+                        }}
+                      >
+                        <Box sx={{ display: "flex", alignItems: "center" }}>
                           <Box
                             sx={{
-                              width: 6,
-                              height: 6,
+                              width: 8,
+                              height: 8,
                               borderRadius: "50%",
-                              bgcolor: "secondary.main",
+                              bgcolor: range.color,
                               mr: 1,
                             }}
                           />
-                          Allocated to {row["Allocated Service Line"]}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          fontWeight={600}
-                          color="secondary.dark"
-                        >
-                          {row["Allocation Percentage"]}% of total value
+                          <Typography variant="body2" fontWeight={500}>
+                            {range.name}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary">
+                          {range.count} opps
                         </Typography>
                       </Box>
-                      <Box sx={{ textAlign: "right" }}>
-                        <Typography variant="caption" color="secondary.main">
-                          Allocated Amount
-                        </Typography>
-                        <Typography
-                          variant="h6"
-                          fontWeight={700}
-                          color="secondary.main"
-                        >
-                          {new Intl.NumberFormat("en-US", {
-                            style: "currency",
-                            currency: "EUR",
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 0,
-                          }).format(row["Allocated Gross Revenue"] || 0)}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  )}
-                </Box>
 
-                <CardContent sx={{ p: 0 }}>
-                  <Grid container>
-                    {/* Opportunity Details - Left Column */}
-                    <Grid
-                      item
-                      xs={12}
-                      md={4}
-                      sx={{
-                        p: 2.5,
-                        borderRight: {
-                          xs: "none",
-                          md: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                        },
-                        borderBottom: {
-                          xs: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                          md: "none",
-                        },
-                      }}
-                    >
-                      <Typography
-                        variant="subtitle2"
-                        color="primary.main"
-                        fontWeight={700}
-                        sx={{ mb: 2, display: "flex", alignItems: "center" }}
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", mb: 0.5 }}
                       >
-                        <Box
-                          sx={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            bgcolor: "primary.main",
-                            mr: 1,
-                          }}
-                        />
-                        Opportunity Details
-                      </Typography>
-
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary">
-                            Last Status Change
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ mb: 2 }}
+                        <Box sx={{ flex: 1, mr: 1 }}>
+                          <Box
+                            sx={{
+                              height: 8,
+                              borderRadius: 4,
+                              bgcolor: alpha(range.color, 0.15),
+                              position: "relative",
+                              overflow: "hidden",
+                            }}
                           >
-                            {new Date(
-                              row["Last Status Change Date"]
-                            ).toLocaleDateString()}
-                          </Typography>
-
-                          <Typography variant="caption" color="text.secondary">
-                            Project Type
-                          </Typography>
-                          <Typography variant="body2" fontWeight={600}>
-                            {row["Project Type"] || "N/A"}
-                          </Typography>
-                        </Grid>
-
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary">
-                            Account
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ mb: 2 }}
-                          >
-                            {row["Account"]}
-                          </Typography>
-
-                          <Typography variant="caption" color="text.secondary">
-                            Contribution Margin
-                          </Typography>
-                          <Typography variant="body2" fontWeight={600}>
-                            {row["CM1%"] ? `${row["CM1%"]}%` : "N/A"}
-                          </Typography>
-                        </Grid>
-                      </Grid>
-                    </Grid>
-
-                    {/* Service Offerings - Center Column */}
-                    <Grid
-                      item
-                      xs={12}
-                      md={4}
-                      sx={{
-                        p: 2.5,
-                        borderRight: {
-                          xs: "none",
-                          md: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                        },
-                        borderBottom: {
-                          xs: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                          md: "none",
-                        },
-                      }}
-                    >
-                      <Typography
-                        variant="subtitle2"
-                        color="secondary.main"
-                        fontWeight={700}
-                        sx={{ mb: 2, display: "flex", alignItems: "center" }}
-                      >
-                        <Box
-                          sx={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            bgcolor: "secondary.main",
-                            mr: 1,
-                          }}
-                        />
-                        Service Offerings
-                      </Typography>
-
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Primary Service
-                        </Typography>
-                        <Typography variant="body2" fontWeight={600}>
-                          {row["Service Line 1"]}
-                        </Typography>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            mb: 1,
-                            mt: 0.5,
-                            p: 0.75,
-                            borderRadius: 1,
-                            bgcolor: alpha(theme.palette.primary.main, 0.05),
-                          }}
-                        >
-                          <Box sx={{ display: "flex", alignItems: "center" }}>
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{ fontSize: "0.8rem" }}
-                            >
-                              {row["Service Offering 1"]}
-                            </Typography>
-                            <Chip
-                              label={`${row["Service Offering 1 %"]}%`}
-                              size="small"
+                            <Box
                               sx={{
-                                ml: 1,
-                                height: 20,
-                                fontSize: "0.7rem",
-                                bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                color: theme.palette.primary.main,
-                                fontWeight: 600,
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                height: "100%",
+                                width: `${range.percentage}%`,
+                                bgcolor: range.color,
+                                borderRadius: 4,
                               }}
                             />
                           </Box>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            color="primary.main"
-                          >
-                            {new Intl.NumberFormat("en-US", {
-                              style: "currency",
-                              currency: "EUR",
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            }).format(
-                              (row["Gross Revenue"] || 0) *
-                                (row["Service Offering 1 %"] / 100)
-                            )}
-                          </Typography>
                         </Box>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          sx={{ minWidth: 40, textAlign: "right" }}
+                        >
+                          {range.percentage.toFixed(0)}%
+                        </Typography>
                       </Box>
 
-                      {row["Service Line 2"] &&
-                        row["Service Line 2"] !== "-" && (
-                          <Box sx={{ mb: 2 }}>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Secondary Service
-                            </Typography>
-                            <Typography variant="body2" fontWeight={600}>
-                              {row["Service Line 2"]}
-                            </Typography>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                mb: 1,
-                                mt: 0.5,
-                                p: 0.75,
-                                borderRadius: 1,
-                                bgcolor: alpha(
-                                  theme.palette.secondary.main,
-                                  0.05
-                                ),
-                              }}
-                            >
-                              <Box
-                                sx={{ display: "flex", alignItems: "center" }}
-                              >
-                                <Typography
-                                  variant="body2"
-                                  color="text.secondary"
-                                  sx={{ fontSize: "0.8rem" }}
-                                >
-                                  {row["Service Offering 2"]}
-                                </Typography>
-                                <Chip
-                                  label={`${row["Service Offering 2 %"]}%`}
-                                  size="small"
-                                  sx={{
-                                    ml: 1,
-                                    height: 20,
-                                    fontSize: "0.7rem",
-                                    bgcolor: alpha(
-                                      theme.palette.secondary.main,
-                                      0.1
-                                    ),
-                                    color: theme.palette.secondary.main,
-                                    fontWeight: 600,
-                                  }}
-                                />
-                              </Box>
-                              <Typography
-                                variant="body2"
-                                fontWeight={600}
-                                color="secondary.main"
-                              >
-                                {new Intl.NumberFormat("en-US", {
-                                  style: "currency",
-                                  currency: "EUR",
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 0,
-                                }).format(
-                                  (row["Gross Revenue"] || 0) *
-                                    (row["Service Offering 2 %"] / 100)
-                                )}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {row["Service Line 3"] &&
-                        row["Service Line 3"] !== "-" && (
-                          <Box>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Tertiary Service
-                            </Typography>
-                            <Typography variant="body2" fontWeight={600}>
-                              {row["Service Line 3"]}
-                            </Typography>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                mt: 0.5,
-                                p: 0.75,
-                                borderRadius: 1,
-                                bgcolor: alpha(theme.palette.info.main, 0.05),
-                              }}
-                            >
-                              <Box
-                                sx={{ display: "flex", alignItems: "center" }}
-                              >
-                                <Typography
-                                  variant="body2"
-                                  color="text.secondary"
-                                  sx={{ fontSize: "0.8rem" }}
-                                >
-                                  {row["Service Offering 3"]}
-                                </Typography>
-                                <Chip
-                                  label={`${row["Service Offering 3 %"]}%`}
-                                  size="small"
-                                  sx={{
-                                    ml: 1,
-                                    height: 20,
-                                    fontSize: "0.7rem",
-                                    bgcolor: alpha(
-                                      theme.palette.info.main,
-                                      0.1
-                                    ),
-                                    color: theme.palette.info.main,
-                                    fontWeight: 600,
-                                  }}
-                                />
-                              </Box>
-                              <Typography
-                                variant="body2"
-                                fontWeight={600}
-                                color="info.main"
-                              >
-                                {new Intl.NumberFormat("en-US", {
-                                  style: "currency",
-                                  currency: "EUR",
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 0,
-                                }).format(
-                                  (row["Gross Revenue"] || 0) *
-                                    (row["Service Offering 3 %"] / 100)
-                                )}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {/* Allocation verification - Display total allocated percentage */}
-                      {(row["Service Offering 1 %"] ||
-                        row["Service Offering 2 %"] ||
-                        row["Service Offering 3 %"]) && (
-                        <Box
-                          sx={{
-                            mt: 3,
-                            pt: 1.5,
-                            borderTop: `1px dashed ${alpha(
-                              theme.palette.divider,
-                              0.7
-                            )}`,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            Total Allocation:
-                          </Typography>
-                          <Chip
-                            label={`${(
-                              parseFloat(row["Service Offering 1 %"] || 0) +
-                              parseFloat(row["Service Offering 2 %"] || 0) +
-                              parseFloat(row["Service Offering 3 %"] || 0)
-                            ).toFixed(0)}%`}
-                            size="small"
-                            color={
-                              Math.abs(
-                                parseFloat(row["Service Offering 1 %"] || 0) +
-                                  parseFloat(row["Service Offering 2 %"] || 0) +
-                                  parseFloat(row["Service Offering 3 %"] || 0) -
-                                  100
-                              ) < 0.01
-                                ? "success"
-                                : "warning"
-                            }
-                            sx={{ fontWeight: 600 }}
-                          />
-                        </Box>
-                      )}
-                    </Grid>
-
-                    {/* Team Information - Right Column */}
-                    <Grid item xs={12} md={4} sx={{ p: 2.5 }}>
-                      <Typography
-                        variant="subtitle2"
-                        color="info.main"
-                        fontWeight={700}
-                        sx={{ mb: 2, display: "flex", alignItems: "center" }}
-                      >
-                        <Box
-                          sx={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            bgcolor: "info.main",
-                            mr: 1,
-                          }}
-                        />
-                        Team Information
+                      <Typography variant="body2" color="text.secondary">
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(range.value)}
                       </Typography>
+                    </Box>
+                  )
+                )}
+              </Box>
 
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary">
-                            Engagement Manager
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ mb: 2 }}
-                          >
-                            {row["EM"] || "Not assigned"}
-                          </Typography>
-
-                          <Typography variant="caption" color="text.secondary">
-                            Manager
-                          </Typography>
-                          <Typography variant="body2" fontWeight={600}>
-                            {row["Manager"] || "Not assigned"}
-                          </Typography>
-                        </Grid>
-
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary">
-                            Engagement Partner
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ mb: 2 }}
-                          >
-                            {row["EP"] || "Not assigned"}
-                          </Typography>
-
-                          <Typography variant="caption" color="text.secondary">
-                            Partner
-                          </Typography>
-                          <Typography variant="body2" fontWeight={600}>
-                            {row["Partner"] || "Not assigned"}
-                          </Typography>
-                        </Grid>
-                      </Grid>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Box>
-          </Collapse>
-        </TableCell>
-      </TableRow>
-    </>
-  );
-};
-
-const OpportunityList = ({
-  data,
-  title,
-  selectedOpportunities,
-  onSelectionChange,
-  defaultRowsPerPage = 100,
-  resetFilterCallback = null,
-  isFiltered = false,
-  disablePagination = false, // New prop to disable pagination
-}) => {
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(defaultRowsPerPage);
-  const theme = useTheme();
-  const [order, setOrder] = useState("desc");
-  const [orderBy, setOrderBy] = useState("Opportunity ID");
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const handleRowClick = (row) => {
-    const opportunityId = row["Opportunity ID"];
-    let newSelection;
-
-    if (
-      selectedOpportunities.some(
-        (opp) => opp["Opportunity ID"] === opportunityId
-      )
-    ) {
-      // If already selected, remove it
-      newSelection = selectedOpportunities.filter(
-        (opp) => opp["Opportunity ID"] !== opportunityId
-      );
-    } else {
-      // If not selected, add it
-      newSelection = [...selectedOpportunities, row];
-    }
-
-    onSelectionChange(newSelection);
-  };
-
-  const isSelected = (row) => {
-    return selectedOpportunities.some(
-      (opp) => opp["Opportunity ID"] === row["Opportunity ID"]
-    );
-  };
-
-  const handleSortRequest = (property) => {
-    const isAsc = orderBy === property && order === "asc";
-    setOrder(isAsc ? "desc" : "asc");
-    setOrderBy(property);
-  };
-
-  const sortedData = () => {
-    return data.slice().sort((a, b) => {
-      let aValue = a[orderBy];
-      let bValue = b[orderBy];
-
-      // Handle specific types of data
-      if (orderBy === "Gross Revenue" || orderBy === "Net Revenue") {
-        aValue = typeof aValue === "number" ? aValue : 0;
-        bValue = typeof bValue === "number" ? bValue : 0;
-      } else if (orderBy === "Status") {
-        // For status, use the numeric value
-        aValue =
-          typeof aValue === "number" ? aValue : parseInt(aValue, 10) || 0;
-        bValue =
-          typeof bValue === "number" ? bValue : parseInt(bValue, 10) || 0;
-      } else if (typeof aValue === "string" && typeof bValue === "string") {
-        // Case-insensitive string comparison
-        return order === "asc"
-          ? aValue.toLowerCase().localeCompare(bValue.toLowerCase())
-          : bValue.toLowerCase().localeCompare(aValue.toLowerCase());
-      }
-
-      // Default numeric comparison
-      return order === "asc" ? aValue - bValue : bValue - aValue;
-    });
-  };
-  const getDisplayData = () => {
-    const sortedResults = sortedData();
-
-    // If pagination is disabled, return all data
-    if (disablePagination) {
-      return sortedResults;
-    }
-
-    // Otherwise return paginated data
-    return sortedResults.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage
-    );
-  };
-
-  return (
-    <Paper
-      elevation={2}
-      sx={{
-        width: "100%",
-        overflow: "hidden",
-        borderRadius: 3,
-        border: "1px solid",
-        borderColor: "divider",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Box
-        sx={{
-          p: 2,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          bgcolor: alpha(theme.palette.primary.main, 0.03),
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <Typography variant="h6" component="div" fontWeight={600}>
-            {title || "Opportunities"}
-          </Typography>
-          {data.length > 0 && (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              component="div"
-              sx={{ ml: 1 }}
-            >
-              {data.length} opportunities
-            </Typography>
-          )}
-        </Box>
-
-        {/* Fixed-width container for filter controls */}
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <Box
-            sx={{
-              width: 110, // Fixed width that accommodates the largest content
-              height: 32, // Fixed height
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {isFiltered && resetFilterCallback ? (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<FilterListOffIcon />}
-                onClick={resetFilterCallback}
-                color="primary"
-                sx={{
-                  minWidth: "auto",
-                  maxWidth: 110,
-                  height: 32,
-                }}
-              >
-                Show All
-              </Button>
-            ) : (
               <Box
                 sx={{
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                  borderRadius: 4,
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  px: 1.5,
-                  py: 0.5,
-                  maxWidth: 110,
-                  height: 32,
-                  opacity: 0.7,
-                  color: "text.secondary",
+                  mt: 3,
+                  backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                  borderRadius: 2,
+                  p: 1.5,
                 }}
               >
-                <Typography variant="body2">All Data</Typography>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  fontWeight={500}
+                >
+                  {data.length} opportunities in pipeline
+                </Typography>
               </Box>
-            )}
-          </Box>
-
-          <Tooltip title="Click on rows to select. Expand rows for more details.">
-            <InfoIcon color="action" fontSize="small" sx={{ ml: 1 }} />
-          </Tooltip>
-        </Box>
-      </Box>
-      {/* Modified TableContainer with no fixed height */}
-      <TableContainer
-        sx={{
-          width: "100%",
-          overflow: "visible",
-          // Force table layout to respect column widths exactly
-          "& .MuiTable-root": {
-            tableLayout: "fixed", // This is key for fixed column widths
-            width: "100%",
-          },
-        }}
-      >
-        <Table
-          stickyHeader={false}
-          aria-label="opportunities table"
-          size="small"
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell
-                padding="checkbox"
-                sx={{ width: 48, minWidth: 48, maxWidth: 48 }} // Fixed width
-              />
-              <TableCell
-                padding="none"
-                sx={{ width: 120, minWidth: 120, maxWidth: 120 }} // Increased from 80 to 120px
-              >
-                <TableSortLabel
-                  active={orderBy === "Opportunity ID"}
-                  direction={orderBy === "Opportunity ID" ? order : "asc"}
-                  onClick={() => handleSortRequest("Opportunity ID")}
-                >
-                  ID
-                </TableSortLabel>
-              </TableCell>
-              <TableCell
-                sx={{ width: "25%", minWidth: 180 }} // Percentage width for flexibility with fixed minimum
-              >
-                <TableSortLabel
-                  active={orderBy === "Opportunity"}
-                  direction={orderBy === "Opportunity" ? order : "asc"}
-                  onClick={() => handleSortRequest("Opportunity")}
-                >
-                  Opportunity
-                </TableSortLabel>
-              </TableCell>
-              <TableCell
-                sx={{ width: 120, minWidth: 120, maxWidth: 120 }} // Fixed width
-              >
-                <TableSortLabel
-                  active={orderBy === "Status"}
-                  direction={orderBy === "Status" ? order : "asc"}
-                  onClick={() => handleSortRequest("Status")}
-                >
-                  Status
-                </TableSortLabel>
-              </TableCell>
-              <TableCell
-                align="right"
-                sx={{ width: 150, minWidth: 150, maxWidth: 150 }} // Fixed width
-              >
-                <TableSortLabel
-                  active={orderBy === "Gross Revenue"}
-                  direction={orderBy === "Gross Revenue" ? order : "asc"}
-                  onClick={() => handleSortRequest("Gross Revenue")}
-                >
-                  Revenue
-                </TableSortLabel>
-              </TableCell>
-              <TableCell
-                sx={{ width: "25%", minWidth: 150 }} // Percentage width for flexibility with fixed minimum
-              >
-                <TableSortLabel
-                  active={orderBy === "Account"}
-                  direction={orderBy === "Account" ? order : "asc"}
-                  onClick={() => handleSortRequest("Account")}
-                >
-                  Account
-                </TableSortLabel>
-              </TableCell>
-              <TableCell
-                sx={{ width: "25%", minWidth: 150 }} // Percentage width for flexibility with fixed minimum
-              >
-                <TableSortLabel
-                  active={orderBy === "Service Line 1"}
-                  direction={orderBy === "Service Line 1" ? order : "asc"}
-                  onClick={() => handleSortRequest("Service Line 1")}
-                >
-                  Service Line
-                </TableSortLabel>
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {data.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No opportunities match the current filters
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              // Use the getDisplayData method instead of direct slicing
-              getDisplayData().map((row) => (
-                <OpportunityRow
-                  key={row["Opportunity ID"]}
-                  row={row}
-                  isSelected={isSelected(row)}
-                  onRowClick={handleRowClick}
-                />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* Only show pagination if not disabled */}
-      {!disablePagination && (
-        <TablePagination
-          rowsPerPageOptions={[25, 50, 100, 250]}
-          component="div"
-          count={data.length}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          sx={{
-            borderTop: "1px solid",
-            borderColor: "divider",
-            "& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows":
-              {
-                fontSize: "0.875rem",
+            </CardContent>
+          </Card>
+        </Grid>
+        {/* Average Opportunity Size Card */}
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              height: "100%",
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
               },
-          }}
-        />
-      )}
-    </Paper>
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 3,
+            }}
+          >
+            <CardContent sx={{ p: 3, height: "100%" }}>
+              {/* Card Title */}
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                color="primary.main"
+                gutterBottom
+              >
+                Opportunity Size Analysis
+              </Typography>
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* Average and Filtered Average in a row */}
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  mt: 3,
+                  mb: 3,
+                }}
+              >
+                {/* Average */}
+                <Box sx={{ flex: 1 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Average Opportunity Size
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    component="div"
+                    fontWeight={700}
+                    color="text.primary"
+                  >
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(
+                      filteredOpportunities.length > 0
+                        ? totalRevenue / filteredOpportunities.length
+                        : 0
+                    )}
+                  </Typography>
+                </Box>
+
+                {/* Filtered Average - only shown when allocation is active */}
+                {isAllocated && (
+                  <Box sx={{ flex: 1, textAlign: "right" }}>
+                    <Typography
+                      variant="body2"
+                      color="secondary.main"
+                      gutterBottom
+                    >
+                      Filtered Average
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      component="div"
+                      color="secondary.main"
+                      fontWeight={700}
+                    >
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        filteredOpportunities.length > 0
+                          ? allocatedRevenue / filteredOpportunities.length
+                          : 0
+                      )}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Median and Filtered Median in a row */}
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  mb: 3,
+                }}
+              >
+                {/* Regular Median */}
+                <Box sx={{ flex: 1 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Median Opportunity Size
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    component="div"
+                    fontWeight={700}
+                    color={theme.palette.info.main}
+                  >
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(
+                      calculateMedianOpportunitySize(filteredOpportunities)
+                    )}
+                  </Typography>
+                </Box>
+
+                {/* Filtered Median - only shown when allocation is active */}
+                {isAllocated && (
+                  <Box sx={{ flex: 1, textAlign: "right" }}>
+                    <Typography
+                      variant="body2"
+                      color={theme.palette.info.dark}
+                      gutterBottom
+                    >
+                      Filtered Median
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      component="div"
+                      color={theme.palette.info.dark}
+                      fontWeight={700}
+                    >
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        calculateFilteredMedianOpportunitySize(
+                          filteredOpportunities
+                        )
+                      )}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Comparison box - analysis of average vs median */}
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  backgroundColor: alpha(theme.palette.info.main, 0.08),
+                  mb: 3,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {calculateMedianOpportunitySize(filteredOpportunities) >
+                  (filteredOpportunities.length > 0
+                    ? totalRevenue / filteredOpportunities.length
+                    : 0)
+                    ? "Median higher than average suggests a few smaller opportunities pulling the average down."
+                    : "Median lower than average suggests a few larger opportunities pulling the average up."}
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  mt: 3,
+                  backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                  borderRadius: 2,
+                  p: 1.5,
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  fontWeight={500}
+                >
+                  From {filteredOpportunities.length} opportunities
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              height: "100%",
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+              borderRadius: 3,
+            }}
+          >
+            <CardContent sx={{ p: 3, height: "100%" }}>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                color="primary.main"
+                gutterBottom
+              >
+                Pipeline by Stage
+              </Typography>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Box sx={{ mt: 2 }}>
+                {pipelineByStatus.map((item, index) => (
+                  <Box key={item.status} sx={{ mb: 2.5 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        mb: 0.5,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Typography variant="body2" fontWeight={600}>
+                        {item.status}
+                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center" }}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={500}
+                          sx={{
+                            mr: 1,
+                            color: COLORS[index % COLORS.length],
+                          }}
+                        >
+                          {new Intl.NumberFormat("en-US", {
+                            style: "percent",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(
+                            item.value /
+                              (isAllocated ? allocatedRevenue : totalRevenue) ||
+                              0
+                          )}
+                        </Typography>
+                        <Chip
+                          label={`${item.count} opps`}
+                          size="small"
+                          sx={{
+                            height: "20px",
+                            fontSize: "0.7rem",
+                            backgroundColor: alpha(
+                              COLORS[index % COLORS.length],
+                              0.12
+                            ),
+                            color: COLORS[index % COLORS.length],
+                            fontWeight: 600,
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: "flex", alignItems: "center" }}>
+                      <Box sx={{ flex: 1, mr: 1 }}>
+                        <Box
+                          sx={{
+                            height: 10,
+                            borderRadius: 5,
+                            bgcolor: alpha(COLORS[index % COLORS.length], 0.15),
+                            position: "relative",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              height: "100%",
+                              width: `${
+                                (item.value /
+                                  (isAllocated
+                                    ? allocatedRevenue
+                                    : totalRevenue)) *
+                                  100 || 0
+                              }%`,
+                              bgcolor: COLORS[index % COLORS.length],
+                              borderRadius: 5,
+                            }}
+                          />
+                        </Box>
+                      </Box>
+                    </Box>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mt: 0.5 }}
+                    >
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(item.value)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Charts Row */}
+        <Grid item xs={12} md={6}>
+          <Paper
+            elevation={2}
+            sx={{
+              p: 3,
+              height: 400,
+              borderRadius: 3,
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 2,
+              }}
+            >
+              <div>
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Pipeline by Status
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Click on chart segments to filter opportunities
+                </Typography>
+              </div>
+              {/* No conditional chips here */}
+            </Box>
+            <ResponsiveContainer width="100%" height="85%">
+              <BarChart
+                data={stackedServiceLineData}
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                onClick={handleChartClick}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={true}
+                  vertical={false}
+                />
+                <XAxis
+                  type="number"
+                  tickFormatter={(value) =>
+                    new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      notation: "compact",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(value)
+                  }
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={150}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip
+                  formatter={(value) => [
+                    new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(value),
+                    "Revenue",
+                  ]}
+                />
+                <Legend />
+                <Bar
+                  dataKey="early"
+                  name="Early Pipeline"
+                  stackId="a"
+                  fill={theme.palette.primary.light}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  dataKey="mid"
+                  name="Mid Pipeline"
+                  stackId="a"
+                  fill={theme.palette.primary.main}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  dataKey="late"
+                  name="Late Pipeline"
+                  stackId="a"
+                  fill={theme.palette.primary.dark}
+                  radius={[0, 4, 4, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Paper
+            elevation={2}
+            sx={{
+              p: 3,
+              height: 400,
+              borderRadius: 3,
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 2,
+              }}
+            >
+              <div>
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Pipeline by Service Line
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Distribution of revenue across service lines
+                </Typography>
+              </div>
+              {/* No conditional chips here */}
+            </Box>
+            <ResponsiveContainer width="100%" height="85%">
+              <BarChart
+                data={pipelineByServiceLine}
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                onClick={handleChartClick}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={true}
+                  vertical={false}
+                />
+                <XAxis
+                  type="number"
+                  tickFormatter={(value) =>
+                    new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      notation: "compact",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(value)
+                  }
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={150}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="value" name="Revenue" radius={[0, 4, 4, 0]}>
+                  {pipelineByServiceLine.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                  <LabelList
+                    dataKey="count"
+                    position="right"
+                    formatter={(value) => `${value} opps`}
+                    style={{ fill: theme.palette.text.secondary, fontSize: 12 }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+        {/* Opportunity List - With increased vertical space and 25 rows by default */}
+        <Grid item xs={12}>
+          <Box>
+            <OpportunityList
+              data={filteredOpportunities}
+              title="Pipeline Opportunities"
+              selectedOpportunities={selectedOpportunities}
+              onSelectionChange={onSelection}
+              resetFilterCallback={
+                isAllocated || filteredOpportunities.length !== data.length
+                  ? () => setFilteredOpportunities(data)
+                  : null
+              }
+              isFiltered={
+                isAllocated || filteredOpportunities.length !== data.length
+              }
+            />
+          </Box>
+        </Grid>
+      </Grid>
+    </Fade>
   );
 };
 
-export default OpportunityList;
+export default PipelineTab;
