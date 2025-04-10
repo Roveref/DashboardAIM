@@ -447,8 +447,8 @@ function App() {
         (item) => item["Status"] >= 1 && item["Status"] <= 11
       );
     } else if (activeTab === 1) {
-      // Bookings Tab: Status 14
-      return filteredData.filter((item) => item["Status"] === 14);
+      // Bookings Tab: Status 14 and 15
+      return filteredData.filter((item) => [14, 15].includes(item["Status"]));
     } else if (activeTab === 2) {
       // Service Lines Tab: All data
       return filteredData;
