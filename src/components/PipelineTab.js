@@ -32,6 +32,7 @@ import {
 import OpportunityList from "./OpportunityList";
 import { sumBy, groupDataBy } from "../utils/dataUtils";
 import ArrowRightAltIcon from "@mui/icons-material/ArrowRightAlt";
+import PipelineInsights from "./PipelineInsights";
 
 // Status mapping for better readability
 const statusMap = {
@@ -407,6 +408,12 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       <Grid container spacing={3}>
         {/* Summary Cards */}
         {/* Summary Cards - First Row */}
+        <Grid item xs={12}>
+          <PipelineInsights
+            data={data}
+            isFiltered={filteredOpportunities.length !== data.length}
+          />
+        </Grid>
         <Grid item xs={12} md={4}>
           <Card
             sx={{
@@ -1002,6 +1009,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 data={stackedServiceLineData}
                 layout="vertical"
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                onClick={handleChartClick}
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
