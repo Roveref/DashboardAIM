@@ -18,6 +18,8 @@ import {
   Slider,
   Chip,
 } from "@mui/material";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -307,6 +309,17 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     );
     setTotalBookings(total);
 
+    const calculateRevenueWithAllocation = (opportunities) => {
+      return opportunities.reduce((sum, item) => {
+        // Check if the item has meaningful allocation
+        if (item["Is Allocated"] && item["Allocation Percentage"] > 0) {
+          return sum + (item["Allocated Gross Revenue"] || 0);
+        }
+        // Fallback to gross revenue if no allocation
+        return sum + (item["Gross Revenue"] || 0);
+      }, 0);
+    };
+
     // Calculate monthly yearly bookings for the bar chart
     const bookedData = data.filter((item) => item["Status"] === 14);
     const monthly = getMonthlyYearlyTotals(
@@ -376,194 +389,106 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
 
   return (
     <Fade in={!loading} timeout={500}>
-      <Grid container spacing={3}>
-        {/* Summary Cards */}
-        <Grid container spacing={3}>
+      <Box sx={{ width: "100%" }}>
+        {/* Updated Calculation Logic for Allocation */}
+        <Grid
+          container
+          spacing={3}
+          sx={{
+            width: "100%",
+            mb: 3,
+          }}
+        >
           {/* Total Bookings Card */}
-          <Grid item xs={12} md={4}>
-            <Card
+          <Grid item xs={12} sm={4}>
+            <Paper
+              elevation={0}
               sx={{
                 height: "100%",
-                borderRadius: 3,
-                transition: "all 0.3s",
-                "&:hover": {
-                  boxShadow: 6,
-                  transform: "translateY(-4px)",
-                },
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                p: 3,
+                backgroundColor: alpha(theme.palette.primary.main, 0.04),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+                borderRadius: 2,
               }}
             >
-              <CardContent>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 2,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
                   Total Bookings 2025
                 </Typography>
-                <Typography
-                  variant="h3"
-                  color="primary.main"
-                  fontWeight={700}
-                  sx={{ mb: 1 }}
-                >
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    sumBy(
-                      data.filter(
-                        (item) =>
-                          item["Status"] === 14 &&
-                          new Date(item["Creation Date"]).getFullYear() === 2025
-                      ),
-                      "Gross Revenue"
-                    )
-                  )}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {
-                    data.filter(
-                      (item) =>
-                        item["Status"] === 14 &&
-                        new Date(item["Creation Date"]).getFullYear() === 2025
-                    ).length
-                  }{" "}
-                  booked opportunities
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 1, display: "block" }}
-                >
-                  2024 Total:{" "}
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    sumBy(
-                      data.filter(
-                        (item) =>
-                          item["Status"] === 14 &&
-                          new Date(item["Creation Date"]).getFullYear() === 2024
-                      ),
-                      "Gross Revenue"
-                    )
-                  )}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
 
-          {/* Total Lost Opportunities Card */}
-          <Grid item xs={12} md={4}>
-            <Card
-              sx={{
-                height: "100%",
-                borderRadius: 3,
-                transition: "all 0.3s",
-                "&:hover": {
-                  boxShadow: 6,
-                  transform: "translateY(-4px)",
-                },
-              }}
-            >
-              <CardContent>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Total Lost 2025
-                </Typography>
-                <Typography
-                  variant="h3"
-                  color="error.main"
-                  fontWeight={700}
-                  sx={{ mb: 1 }}
-                >
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    sumBy(
-                      data.filter(
-                        (item) =>
-                          item["Status"] === 15 &&
-                          new Date(item["Lost Date"]).getFullYear() === 2025
-                      ),
-                      "Gross Revenue"
-                    )
-                  )}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {
-                    data.filter(
-                      (item) =>
-                        item["Status"] === 15 &&
-                        new Date(item["Lost Date"]).getFullYear() === 2025
-                    ).length
-                  }{" "}
-                  lost opportunities
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 1, display: "block" }}
-                >
-                  2024 Total:{" "}
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    sumBy(
-                      data.filter(
-                        (item) =>
-                          item["Status"] === 15 &&
-                          new Date(item["Lost Date"]).getFullYear() === 2024
-                      ),
-                      "Gross Revenue"
-                    )
-                  )}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+                <Chip
+                  label={`${filteredOpportunities.length} opps`}
+                  color="primary"
+                  size="small"
+                  sx={{
+                    height: 22,
+                    fontSize: "0.675rem",
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
 
-          {/* Average Booking Size Card */}
-          <Grid item xs={12} md={4}>
-            <Card
-              sx={{
-                height: "100%",
-                borderRadius: 3,
-                transition: "all 0.3s",
-                "&:hover": {
-                  boxShadow: 6,
-                  transform: "translateY(-4px)",
-                },
-              }}
-            >
-              <CardContent>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Average Booking Size 2025
-                </Typography>
-                <Typography
-                  variant="h3"
-                  color="secondary.main"
-                  fontWeight={700}
-                  sx={{ mb: 1 }}
-                >
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    data.filter(
-                      (item) =>
-                        item["Status"] === 14 &&
-                        new Date(item["Creation Date"]).getFullYear() === 2025
-                    ).length > 0
-                      ? sumBy(
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  mb: 2,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="h5"
+                    color="primary.main"
+                    fontWeight={700}
+                    sx={{ mb: 0.5 }}
+                  >
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(
+                      filteredOpportunities
+                        .filter(
+                          (item) =>
+                            item["Status"] === 14 &&
+                            new Date(item["Creation Date"]).getFullYear() ===
+                              2025
+                        )
+                        .reduce((sum, item) => {
+                          // Check if the item has meaningful allocation
+                          if (
+                            item["Is Allocated"] &&
+                            item["Allocation Percentage"] > 0
+                          ) {
+                            return sum + (item["Allocated Gross Revenue"] || 0);
+                          }
+                          // Fallback to gross revenue if no allocation
+                          return sum + (item["Gross Revenue"] || 0);
+                        }, 0)
+                    )}
+                  </Typography>
+                  {filteredOpportunities.length !== data.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      (Total:{" "}
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        sumBy(
                           data.filter(
                             (item) =>
                               item["Status"] === 14 &&
@@ -571,16 +496,338 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                                 2025
                           ),
                           "Gross Revenue"
-                        ) /
+                        )
+                      )}
+                      )
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {
+                    filteredOpportunities.filter(
+                      (item) =>
+                        item["Status"] === 14 &&
+                        new Date(item["Creation Date"]).getFullYear() === 2025
+                    ).length
+                  }{" "}
+                  opportunities
+                </Typography>
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    color: theme.palette.success.main,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="inherit"
+                    fontWeight={600}
+                    sx={{ mr: 1 }}
+                  >
+                    {filteredOpportunities.length !== data.length
+                      ? `${filteredOpportunities.length}%`
+                      : "10%"}{" "}
+                    vs total
+                  </Typography>
+                  <ArrowUpwardIcon fontSize="small" color="inherit" />
+                </Box>
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Total Lost Opportunities Card */}
+          <Grid item xs={12} sm={4}>
+            <Paper
+              elevation={0}
+              sx={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                p: 3,
+                backgroundColor: alpha(theme.palette.error.main, 0.04),
+                border: `1px solid ${alpha(theme.palette.error.main, 0.1)}`,
+                borderRadius: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 2,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Total Lost 2025
+                </Typography>
+
+                <Chip
+                  label={`${filteredOpportunities.length} opps`}
+                  color="error"
+                  size="small"
+                  sx={{
+                    height: 22,
+                    fontSize: "0.675rem",
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  mb: 2,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="h5"
+                    color="error.main"
+                    fontWeight={700}
+                    sx={{ mb: 0.5 }}
+                  >
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(
+                      sumBy(
+                        filteredOpportunities.filter(
+                          (item) =>
+                            item["Status"] === 15 &&
+                            new Date(item["Lost Date"]).getFullYear() === 2025
+                        ),
+                        (item) => {
+                          // First check if allocation exists and is meaningful
+                          if (item["Allocated Gross Revenue"] > 0) {
+                            return item["Allocated Gross Revenue"];
+                          }
+                          // Fallback to Gross Revenue if no meaningful allocation
+                          return item["Gross Revenue"] || 0;
+                        }
+                      )
+                    )}
+                  </Typography>
+                  {filteredOpportunities.length !== data.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      (Total:{" "}
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        sumBy(
                           data.filter(
                             (item) =>
-                              item["Status"] === 14 &&
-                              new Date(item["Creation Date"]).getFullYear() ===
-                                2025
-                          ).length
-                      : 0
+                              item["Status"] === 15 &&
+                              new Date(item["Lost Date"]).getFullYear() === 2025
+                          ),
+                          "Gross Revenue"
+                        )
+                      )}
+                      )
+                    </Typography>
                   )}
+                </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {
+                    filteredOpportunities.filter(
+                      (item) =>
+                        item["Status"] === 15 &&
+                        new Date(item["Lost Date"]).getFullYear() === 2025
+                    ).length
+                  }{" "}
+                  lost opportunities
                 </Typography>
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    color: theme.palette.error.main,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="inherit"
+                    fontWeight={600}
+                    sx={{ mr: 1 }}
+                  >
+                    {filteredOpportunities.length !== data.length
+                      ? `${filteredOpportunities.length}%`
+                      : "-67%"}{" "}
+                    vs total
+                  </Typography>
+                  <ArrowDownwardIcon fontSize="small" color="inherit" />
+                </Box>
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Average Booking Size Card */}
+          <Grid item xs={12} sm={4}>
+            <Paper
+              elevation={0}
+              sx={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                p: 3,
+                backgroundColor: alpha(theme.palette.secondary.main, 0.04),
+                border: `1px solid ${alpha(theme.palette.secondary.main, 0.1)}`,
+                borderRadius: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 2,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Average Booking Size 2025
+                </Typography>
+
+                <Chip
+                  label={`${filteredOpportunities.length} opps`}
+                  color="secondary"
+                  size="small"
+                  sx={{
+                    height: 22,
+                    fontSize: "0.675rem",
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  mb: 2,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="h5"
+                    color="secondary.main"
+                    fontWeight={700}
+                    sx={{ mb: 0.5 }}
+                  >
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(
+                      filteredOpportunities.filter(
+                        (item) =>
+                          item["Status"] === 14 &&
+                          new Date(item["Creation Date"]).getFullYear() === 2025
+                      ).length > 0
+                        ? sumBy(
+                            filteredOpportunities.filter(
+                              (item) =>
+                                item["Status"] === 14 &&
+                                new Date(
+                                  item["Creation Date"]
+                                ).getFullYear() === 2025
+                            ),
+                            (item) => {
+                              // First check if allocation exists and is meaningful
+                              if (item["Allocated Gross Revenue"] > 0) {
+                                return item["Allocated Gross Revenue"];
+                              }
+                              // Fallback to Gross Revenue if no meaningful allocation
+                              return item["Gross Revenue"] || 0;
+                            }
+                          ) /
+                            filteredOpportunities.filter(
+                              (item) =>
+                                item["Status"] === 14 &&
+                                new Date(
+                                  item["Creation Date"]
+                                ).getFullYear() === 2025
+                            ).length
+                        : 0
+                    )}
+                  </Typography>
+                  {filteredOpportunities.length !== data.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      (Total:{" "}
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        data.filter(
+                          (item) =>
+                            item["Status"] === 14 &&
+                            new Date(item["Creation Date"]).getFullYear() ===
+                              2025
+                        ).length > 0
+                          ? sumBy(
+                              data.filter(
+                                (item) =>
+                                  item["Status"] === 14 &&
+                                  new Date(
+                                    item["Creation Date"]
+                                  ).getFullYear() === 2025
+                              ),
+                              "Gross Revenue"
+                            ) /
+                              data.filter(
+                                (item) =>
+                                  item["Status"] === 14 &&
+                                  new Date(
+                                    item["Creation Date"]
+                                  ).getFullYear() === 2025
+                              ).length
+                          : 0
+                      )}
+                      )
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <Typography variant="body2" color="text.secondary">
                   Range:{" "}
                   {new Intl.NumberFormat("en-US", {
@@ -590,14 +837,18 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     maximumFractionDigits: 0,
                   }).format(
                     Math.min(
-                      ...data
+                      ...filteredOpportunities
                         .filter(
                           (item) =>
                             item["Status"] === 14 &&
                             new Date(item["Creation Date"]).getFullYear() ===
                               2025
                         )
-                        .map((opp) => opp["Gross Revenue"] || 0)
+                        .map((opp) =>
+                          opp["Allocated Gross Revenue"] > 0
+                            ? opp["Allocated Gross Revenue"]
+                            : opp["Gross Revenue"] || 0
+                        )
                     )
                   )}{" "}
                   -
@@ -608,57 +859,46 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     maximumFractionDigits: 0,
                   }).format(
                     Math.max(
-                      ...data
+                      ...filteredOpportunities
                         .filter(
                           (item) =>
                             item["Status"] === 14 &&
                             new Date(item["Creation Date"]).getFullYear() ===
                               2025
                         )
-                        .map((opp) => opp["Gross Revenue"] || 0)
+                        .map((opp) =>
+                          opp["Allocated Gross Revenue"] > 0
+                            ? opp["Allocated Gross Revenue"]
+                            : opp["Gross Revenue"] || 0
+                        )
                     )
                   )}
                 </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 1, display: "block" }}
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    color: theme.palette.success.main,
+                  }}
                 >
-                  2024 Avg:{" "}
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    data.filter(
-                      (item) =>
-                        item["Status"] === 14 &&
-                        new Date(item["Creation Date"]).getFullYear() === 2024
-                    ).length > 0
-                      ? sumBy(
-                          data.filter(
-                            (item) =>
-                              item["Status"] === 14 &&
-                              new Date(item["Creation Date"]).getFullYear() ===
-                                2024
-                          ),
-                          "Gross Revenue"
-                        ) /
-                          data.filter(
-                            (item) =>
-                              item["Status"] === 14 &&
-                              new Date(item["Creation Date"]).getFullYear() ===
-                                2024
-                          ).length
-                      : 0
-                  )}
-                </Typography>
-              </CardContent>
-            </Card>
+                  <Typography
+                    variant="caption"
+                    color="inherit"
+                    fontWeight={600}
+                    sx={{ mr: 1 }}
+                  >
+                    {filteredOpportunities.length !== data.length
+                      ? `${filteredOpportunities.length}%`
+                      : "100%"}{" "}
+                    vs total
+                  </Typography>
+                  <ArrowUpwardIcon fontSize="small" color="inherit" />
+                </Box>
+              </Box>
+            </Paper>
           </Grid>
         </Grid>
-
         {/* Monthly Bookings Chart */}
         <Grid item xs={12}>
           <Paper
@@ -902,7 +1142,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
             onSelectionChange={onSelection}
           />
         </Grid>
-      </Grid>
+      </Box>
     </Fade>
   );
 };
