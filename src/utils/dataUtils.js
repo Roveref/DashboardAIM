@@ -312,3 +312,360 @@ export const getNewLosses = (data, startDate, endDate) => {
   console.log("Lost opportunities found:", lostOpportunities.length);
   return lostOpportunities;
 };
+
+/**
+ * Processes an uploaded Excel file with staffing data
+ * @param {ArrayBuffer} fileData - The Excel file data as ArrayBuffer
+ * @returns {Object} Processed staffing data with employees, periods, and calculated utilization rates
+ */
+export const processStaffingData = async (fileData) => {
+  try {
+    if (!fileData) {
+      throw new Error("No staffing file data provided");
+    }
+
+    // Parse the Excel file
+    const workbook = XLSX.read(fileData, {
+      type: "array",
+      cellDates: true, // Parse dates correctly
+      cellNF: true, // Number formatting
+    });
+
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      throw new Error("Excel file does not contain any sheets");
+    }
+
+    // Get the first sheet
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+
+    // Convert to JSON with headers
+    const rawData = XLSX.utils.sheet_to_json(worksheet, {
+      raw: false, // Format numbers
+      dateNF: "yyyy-mm-dd", // Date format
+    });
+
+    if (!rawData || rawData.length === 0) {
+      throw new Error("No data found in the staffing Excel file");
+    }
+
+    // Process the data to extract employees, periods, and calculate utilization
+    // First, determine the column headers (periods)
+    const firstRow = rawData[0];
+    // The first column should be the employee name or ID, so we skip it
+    const periodColumns = Object.keys(firstRow).filter(
+      (key) => key !== "__EMPTY" && !key.startsWith("__EMPTY")
+    );
+
+    // Extract periods (column headers after employee info)
+    const periods = periodColumns.map((column) => ({
+      id: column,
+      label: column, // We can format this if needed
+    }));
+
+    // Process employee data
+    // We expect pairs of rows - one for chargeable hours and one for total hours
+    const employees = [];
+    const utilizationData = [];
+    const segmentData = {}; // Store data by segment for filtering
+
+    // First check if we have specialized row pattern with "Ch" (for chargeable) and "Total"
+    let isSpecialFormat = false;
+    for (let i = 0; i < Math.min(10, rawData.length); i++) {
+      const row = rawData[i];
+      const firstCol = row.__EMPTY;
+      if (firstCol === "Ch" || firstCol === "Total") {
+        isSpecialFormat = true;
+        break;
+      }
+    }
+
+    // First pass: identify if we have columns for employee details
+    let nomColumnIdx = -1;
+    let equipeColumnIdx = -1;
+    let roleColumnIdx = -1;
+    let segmentColumnIdx = -1;
+    const headerRow = rawData[0];
+
+    // Check for employee data columns
+    Object.keys(headerRow).forEach((key) => {
+      if (key.startsWith("__EMPTY_")) {
+        const headerValue = headerRow[key];
+        if (headerValue && typeof headerValue === "string") {
+          const headerLower = headerValue.toLowerCase();
+          if (headerLower === "nom" || headerLower.includes("nom")) {
+            nomColumnIdx = parseInt(key.replace("__EMPTY_", ""));
+          } else if (
+            headerLower === "equipe" ||
+            headerLower.includes("equipe")
+          ) {
+            equipeColumnIdx = parseInt(key.replace("__EMPTY_", ""));
+          } else if (headerLower === "role" || headerLower.includes("role")) {
+            roleColumnIdx = parseInt(key.replace("__EMPTY_", ""));
+          } else if (
+            headerLower === "segment" ||
+            headerLower.includes("segment") ||
+            headerLower === "clr" ||
+            headerLower.includes("clr")
+          ) {
+            segmentColumnIdx = parseInt(key.replace("__EMPTY_", ""));
+          }
+        }
+      }
+    });
+
+    // Initialize CLR segment explicitly
+    segmentData.CLR = {
+      employees: [],
+      utilizationData: [],
+      // Will calculate team averages later
+    };
+
+    // For special format (Ch/Total), handle differently
+    if (isSpecialFormat) {
+      // Process in pairs - find all ch/total pairs
+      const employeePairs = [];
+
+      for (let i = 0; i < rawData.length - 1; i++) {
+        const row1 = rawData[i];
+        const row2 = rawData[i + 1];
+
+        if (row1.__EMPTY === "Ch" && row2.__EMPTY === "Total") {
+          employeePairs.push({
+            chargeableRow: row1,
+            totalRow: row2,
+            // Try to get employee name from a nearby row if exists
+            employeeName:
+              i > 0
+                ? rawData[i - 1].__EMPTY ||
+                  `Employee ${employeePairs.length + 1}`
+                : `Employee ${employeePairs.length + 1}`,
+          });
+          i++; // Skip the total row in next iteration
+        }
+      }
+
+      // Now process each employee pair
+      employeePairs.forEach((pair, index) => {
+        const { chargeableRow, totalRow, employeeName } = pair;
+
+        // Get employee segment if available
+        let segment = "Unknown";
+        if (segmentColumnIdx > 0) {
+          // Try to get segment from a row above the chargeable row
+          const possibleSegmentRow = index > 0 ? rawData[index * 2 - 1] : null;
+          if (
+            possibleSegmentRow &&
+            possibleSegmentRow[`__EMPTY_${segmentColumnIdx}`]
+          ) {
+            segment = possibleSegmentRow[`__EMPTY_${segmentColumnIdx}`];
+          }
+        }
+
+        // For CLR filtering - check if segment contains CLR
+        const isCLR = segment.toString().toUpperCase().includes("CLR");
+
+        const employee = {
+          id: employeeName,
+          name: employeeName,
+          nom: employeeName,
+          equipe: "N/A", // We don't have this info in this format
+          role: "N/A", // We don't have this info in this format
+          segment: segment,
+          isCLR: isCLR,
+        };
+
+        employees.push(employee);
+
+        // Calculate utilization rates for each period
+        const employeeData = {
+          employeeId: employeeName,
+          nom: employeeName,
+          equipe: "N/A",
+          role: "N/A",
+          segment,
+          isCLR,
+          periods: [],
+        };
+
+        periodColumns.forEach((period) => {
+          const chargeableHours = parseFloat(chargeableRow[period]) || 0;
+          const totalHours = parseFloat(totalRow[period]) || 0;
+          const utilizationRate =
+            totalHours > 0 ? (chargeableHours / totalHours) * 100 : 0;
+
+          employeeData.periods.push({
+            periodId: period,
+            chargeableHours,
+            totalHours,
+            utilizationRate: parseFloat(utilizationRate.toFixed(2)),
+          });
+        });
+
+        utilizationData.push(employeeData);
+
+        // Store by segment for filtering
+        if (!segmentData[segment]) {
+          segmentData[segment] = {
+            employees: [],
+            utilizationData: [],
+          };
+        }
+
+        segmentData[segment].employees.push(employee);
+        segmentData[segment].utilizationData.push(employeeData);
+
+        // Add to CLR segment if applicable
+        if (isCLR) {
+          segmentData.CLR.employees.push(employee);
+          segmentData.CLR.utilizationData.push(employeeData);
+        }
+      });
+    } else {
+      // Standard format processing - pairs of consecutive rows
+      for (let i = 0; i < rawData.length; i += 2) {
+        if (i + 1 >= rawData.length) break; // Skip if we don't have a pair
+
+        const chargeableRow = rawData[i];
+        const totalRow = rawData[i + 1];
+
+        // Get employee name/info from the relevant columns
+        const employeeId = chargeableRow.__EMPTY || `Employee ${i / 2 + 1}`;
+
+        // Get employee details from appropriate columns
+        let nom = employeeId;
+        let equipe = "N/A";
+        let role = "N/A";
+        let segment = "Unknown";
+
+        if (nomColumnIdx > 0) {
+          nom = chargeableRow[`__EMPTY_${nomColumnIdx}`] || employeeId;
+        }
+
+        if (equipeColumnIdx > 0) {
+          equipe = chargeableRow[`__EMPTY_${equipeColumnIdx}`] || "N/A";
+        }
+
+        if (roleColumnIdx > 0) {
+          role = chargeableRow[`__EMPTY_${roleColumnIdx}`] || "N/A";
+        }
+
+        if (segmentColumnIdx > 0) {
+          segment = chargeableRow[`__EMPTY_${segmentColumnIdx}`] || "Unknown";
+        }
+
+        // Check if this is a row with employee data (should have numeric values in period columns)
+        if (
+          !periodColumns.some((col) => !isNaN(parseFloat(chargeableRow[col])))
+        ) {
+          continue; // Skip rows that don't have numeric data
+        }
+
+        // For CLR filtering - add data to CLR segment if segment contains CLR
+        const isCLR = segment.toString().toUpperCase().includes("CLR");
+
+        const employee = {
+          id: employeeId,
+          name: nom,
+          nom: nom,
+          equipe: equipe,
+          role: role,
+          segment: segment,
+          isCLR: isCLR,
+        };
+
+        employees.push(employee);
+
+        // Calculate utilization rates for each period
+        const employeeData = {
+          employeeId,
+          nom,
+          equipe,
+          role,
+          segment,
+          isCLR,
+          periods: [],
+        };
+
+        periodColumns.forEach((period) => {
+          const chargeableHours = parseFloat(chargeableRow[period]) || 0;
+          const totalHours = parseFloat(totalRow[period]) || 0;
+          const utilizationRate =
+            totalHours > 0 ? (chargeableHours / totalHours) * 100 : 0;
+
+          employeeData.periods.push({
+            periodId: period,
+            chargeableHours,
+            totalHours,
+            utilizationRate: parseFloat(utilizationRate.toFixed(2)),
+          });
+        });
+
+        utilizationData.push(employeeData);
+
+        // Store by segment for filtering
+        if (!segmentData[segment]) {
+          segmentData[segment] = {
+            employees: [],
+            utilizationData: [],
+          };
+        }
+
+        segmentData[segment].employees.push(employee);
+        segmentData[segment].utilizationData.push(employeeData);
+
+        // Add to CLR segment if applicable
+        if (isCLR) {
+          segmentData.CLR.employees.push(employee);
+          segmentData.CLR.utilizationData.push(employeeData);
+        }
+      }
+    }
+
+    // Calculate team averages for each period - overall and by segment
+    const calculateTeamAverages = (utilizationDataSet) => {
+      return periods.map((period) => {
+        const periodData = utilizationDataSet
+          .map((emp) => emp.periods.find((p) => p.periodId === period.id))
+          .filter((p) => p); // Filter out undefined values
+
+        const totalChargeable = periodData.reduce(
+          (sum, p) => sum + p.chargeableHours,
+          0
+        );
+        const totalHours = periodData.reduce((sum, p) => sum + p.totalHours, 0);
+        const avgUtilization =
+          totalHours > 0 ? (totalChargeable / totalHours) * 100 : 0;
+
+        return {
+          periodId: period.id,
+          totalChargeableHours: totalChargeable,
+          totalAvailableHours: totalHours,
+          averageUtilizationRate: parseFloat(avgUtilization.toFixed(2)),
+        };
+      });
+    };
+
+    // Calculate overall team averages
+    const teamAverages = calculateTeamAverages(utilizationData);
+
+    // Calculate segment-specific team averages
+    Object.keys(segmentData).forEach((segment) => {
+      segmentData[segment].teamAverages = calculateTeamAverages(
+        segmentData[segment].utilizationData
+      );
+    });
+
+    return {
+      employees,
+      periods,
+      utilizationData,
+      teamAverages,
+      segmentData, // Include segment data for filtering
+      rawData,
+    };
+  } catch (error) {
+    console.error("Error processing staffing Excel data:", error);
+    throw error;
+  }
+};
