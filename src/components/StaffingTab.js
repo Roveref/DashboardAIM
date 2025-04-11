@@ -61,6 +61,7 @@ const StaffingTab = ({ data, loading, currentFile, filters = {} }) => {
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [filteredData, setFilteredData] = useState(null);
   const [activeSegment, setActiveSegment] = useState("All");
+  const [highlightedEmployee, setHighlightedEmployee] = useState(null);
 
   // Handle data loading and filtering
   useEffect(() => {
