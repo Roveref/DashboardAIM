@@ -40,6 +40,14 @@ const LEFT_DRAWER_WIDTH = 240;
 const RIGHT_DRAWER_WIDTH = 240;
 
 function App() {
+  const readFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(e);
+      reader.readAsArrayBuffer(file);
+    });
+  };
   const [activeTab, setActiveTab] = useState(0);
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
@@ -420,8 +428,6 @@ function App() {
       // Iterate through new filters and ensure they are arrays
       Object.keys(newFilters).forEach((key) => {
         const value = newFilters[key];
-
-        // If value is an array, use it. Otherwise, default to an empty array
         updatedFilters[key] = Array.isArray(value) ? value : [];
       });
 
