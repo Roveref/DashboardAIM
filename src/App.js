@@ -31,6 +31,9 @@ import FileUploader from "./components/FileUploader";
 import { processExcelData, getUniqueValues } from "./utils/dataUtils";
 import theme from "./theme";
 import JobcodeTimelineTab from "./components/JobcodeTimelineTab";
+import StaffingTab from "./components/StaffingTab";
+import { processStaffingData } from "./utils/dataUtils";
+import DualFileUploader from "./components/DualFileUploader";
 
 // Sidebar width definition
 const LEFT_DRAWER_WIDTH = 240;
@@ -49,6 +52,9 @@ function App() {
     manager: [],
     partner: [],
   });
+  const [staffingData, setStaffingData] = useState(null);
+  const [currentStaffingFile, setCurrentStaffingFile] = useState(null);
+  const [staffingLoading, setStaffingLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedOpportunities, setSelectedOpportunities] = useState([]);
   const [notification, setNotification] = useState({
@@ -72,7 +78,36 @@ function App() {
 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
-  const handleFileUploaded = async (fileName, fileData) => {
+  const handleStaffingFileUploaded = async (fileName, fileData) => {
+    try {
+      setStaffingLoading(true);
+      setCurrentStaffingFile(fileName);
+
+      // Process the uploaded Excel file
+      const processedData = await processStaffingData(fileData);
+
+      setStaffingData(processedData);
+
+      setNotification({
+        open: true,
+        message: `Successfully loaded staffing data from ${fileName}`,
+        severity: "success",
+      });
+    } catch (error) {
+      console.error("Error processing staffing file:", error);
+      setNotification({
+        open: true,
+        message: `Error loading staffing file: ${
+          error.message || "Unknown error"
+        }`,
+        severity: "error",
+      });
+    } finally {
+      setStaffingLoading(false);
+    }
+  };
+
+  const handleOpportunityFileUploaded = async (fileName, fileData) => {
     try {
       setLoading(true);
       setCurrentFile(fileName);
@@ -979,10 +1014,29 @@ function App() {
                     }
                     iconPosition="start"
                   />
+                  <Tab
+                    label="Staffing"
+                    icon={
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          bgcolor: theme.palette.warning.main,
+                          display: "inline-block",
+                          mr: 1,
+                          verticalAlign: "middle",
+                          mb: 0.5,
+                        }}
+                      />
+                    }
+                    iconPosition="start"
+                  />
                 </Tabs>
               )}
 
               {/* Right side - File info & uploader */}
+              {/* Right side - File info & uploader buttons */}
               <Box
                 sx={{
                   display: "flex",
@@ -991,11 +1045,13 @@ function App() {
                   ml: "auto",
                 }}
               >
-                {currentFile && (
+                {/* Current files info */}
+                {(currentFile || currentStaffingFile) && (
                   <Box
                     sx={{
                       display: { xs: "none", md: "flex" },
                       alignItems: "center",
+                      flexDirection: "column",
                       px: 2,
                       py: 0.75,
                       borderRadius: 2,
@@ -1009,32 +1065,107 @@ function App() {
                       )}`,
                     }}
                   >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        mr: 1,
-                        fontWeight: 500,
-                      }}
-                    >
-                      Current file:
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.primary"
-                      sx={{
-                        fontWeight: 600,
-                      }}
-                    >
-                      {currentFile}
-                    </Typography>
+                    {currentFile && (
+                      <Box sx={{ display: "flex", alignItems: "center" }}>
+                        <TimelineIcon
+                          fontSize="small"
+                          color="primary"
+                          sx={{ mr: 1 }}
+                        />
+                        <Typography
+                          variant="body2"
+                          color="text.primary"
+                          sx={{
+                            fontWeight: 600,
+                          }}
+                        >
+                          {currentFile}
+                        </Typography>
+                      </Box>
+                    )}
+                    {currentStaffingFile && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          mt: currentFile ? 0.5 : 0,
+                        }}
+                      >
+                        <PeopleIcon
+                          fontSize="small"
+                          color="secondary"
+                          sx={{ mr: 1 }}
+                        />
+                        <Typography
+                          variant="body2"
+                          color="text.primary"
+                          sx={{
+                            fontWeight: 600,
+                          }}
+                        >
+                          {currentStaffingFile}
+                        </Typography>
+                      </Box>
+                    )}
                   </Box>
                 )}
 
-                <FileUploader
-                  onFileUploaded={handleFileUploaded}
-                  hasData={data.length > 0}
-                />
+                {/* Upload buttons */}
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<TimelineIcon />}
+                    size="small"
+                    onClick={() =>
+                      document.getElementById("opportunity-file-input").click()
+                    }
+                  >
+                    {data.length > 0
+                      ? "Change Opportunities"
+                      : "Upload Opportunities"}
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<PeopleIcon />}
+                    size="small"
+                    onClick={() =>
+                      document.getElementById("staffing-file-input").click()
+                    }
+                  >
+                    {staffingData ? "Change Staffing" : "Upload Staffing"}
+                  </Button>
+
+                  {/* Hidden file inputs */}
+                  <input
+                    id="opportunity-file-input"
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        const file = e.target.files[0];
+                        const buffer = await readFile(file);
+                        handleOpportunityFileUploaded(file.name, buffer);
+                      }
+                    }}
+                    style={{ display: "none" }}
+                  />
+                  <input
+                    id="staffing-file-input"
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        const file = e.target.files[0];
+                        const buffer = await readFile(file);
+                        handleStaffingFileUploaded(file.name, buffer);
+                      }
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </Box>
               </Box>
             </Toolbar>
           </AppBar>
@@ -1084,17 +1215,17 @@ function App() {
                     color="text.secondary"
                     sx={{ maxWidth: "600px", mb: 4 }}
                   >
-                    Upload your Excel file containing opportunity data to
-                    visualize pipeline, bookings, and service line performance
-                    with interactive charts and insights.
+                    Upload your Excel files to visualize pipeline, bookings,
+                    service line performance, and team staffing with interactive
+                    charts and insights.
                   </Typography>
 
-                  <Box sx={{ mt: 2 }}>
-                    <FileUploader
-                      onFileUploaded={handleFileUploaded}
-                      hasData={false}
-                    />
-                  </Box>
+                  <DualFileUploader
+                    onOpportunityFileUploaded={handleOpportunityFileUploaded}
+                    onStaffingFileUploaded={handleStaffingFileUploaded}
+                    hasOpportunityData={false}
+                    hasStaffingData={false}
+                  />
                 </Paper>
               </Fade>
             ) : (
@@ -1144,6 +1275,14 @@ function App() {
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
+                    />
+                  )}
+                  {activeTab === 4 && (
+                    <StaffingTab
+                      data={staffingData}
+                      loading={staffingLoading}
+                      currentFile={currentStaffingFile}
+                      filters={filters} // Pass filters to the StaffingTab
                     />
                   )}
                 </Box>
