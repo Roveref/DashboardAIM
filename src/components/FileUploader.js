@@ -10,16 +10,28 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Chip,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DescriptionIcon from "@mui/icons-material/Description";
 import DeleteIcon from "@mui/icons-material/Delete";
+import BusinessIcon from "@mui/icons-material/Business";
+import PeopleIcon from "@mui/icons-material/People";
 
-const FileUploader = ({ onFileUploaded, hasData }) => {
+const FileUploader = ({
+  onFileUploaded,
+  hasData,
+  fileType = "opportunity",
+}) => {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [open, setOpen] = useState(!hasData);
+  const [open, setOpen] = useState(false); // Don't auto-open the dialog
+  const [selectedFileType, setSelectedFileType] = useState(fileType);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -32,6 +44,10 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
 
   const handleFileChange = (e) => {
     handleFiles(e.target.files);
+  };
+
+  const handleFileTypeChange = (e) => {
+    setSelectedFileType(e.target.value);
   };
 
   const handleFiles = (files) => {
@@ -51,19 +67,18 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
     setFile(selectedFile);
     setError("");
 
-    // Auto-upload the file when selected
-    handleUpload(selectedFile);
+    // Don't auto-upload yet, wait for user to confirm file type
   };
 
-  const handleUpload = async (selectedFile) => {
-    if (!selectedFile) return;
+  const handleUpload = async () => {
+    if (!file) return;
 
     setLoading(true);
     try {
       // Read the file as ArrayBuffer
-      const buffer = await readFile(selectedFile);
-      // Pass the file data to the parent component
-      onFileUploaded(selectedFile.name, buffer);
+      const buffer = await readFile(file);
+      // Pass the file data and type to the parent component
+      onFileUploaded(file.name, buffer, selectedFileType);
       // Close the dialog if open
       setOpen(false);
     } catch (err) {
@@ -92,25 +107,46 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
   };
 
   const closeUploadDialog = () => {
-    // Only close if we have data loaded
-    if (hasData) {
-      setOpen(false);
-    }
+    setOpen(false);
   };
+
+  // Determine the button's appearance based on the file type
+  const getButtonAppearance = () => {
+    const isOpportunityFile = fileType === "opportunity";
+
+    return {
+      icon: isOpportunityFile ? <BusinessIcon /> : <PeopleIcon />,
+      color: isOpportunityFile ? "primary" : "secondary",
+      label: isOpportunityFile
+        ? hasData
+          ? "Change Opportunity File"
+          : "Upload Opportunity File"
+        : hasData
+        ? "Change Staffing File"
+        : "Upload Staffing File",
+    };
+  };
+
+  const buttonAppearance = getButtonAppearance();
 
   return (
     <>
       <Button
         variant="outlined"
-        startIcon={<CloudUploadIcon />}
+        startIcon={buttonAppearance.icon}
         onClick={openUploadDialog}
+        color={buttonAppearance.color}
         sx={{ ml: 2 }}
       >
-        {hasData ? "Change Data File" : "Upload Excel File"}
+        {buttonAppearance.label}
       </Button>
 
       <Dialog open={open} onClose={closeUploadDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Upload Excel Data File</DialogTitle>
+        <DialogTitle>
+          {fileType === "opportunity"
+            ? "Upload Opportunity Data File"
+            : "Upload Staffing Data File"}
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ p: 2 }}>
             {error && (
@@ -118,6 +154,30 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
                 {error}
               </Alert>
             )}
+
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel id="file-type-label">File Type</InputLabel>
+              <Select
+                labelId="file-type-label"
+                id="file-type-select"
+                value={selectedFileType}
+                label="File Type"
+                onChange={handleFileTypeChange}
+              >
+                <MenuItem value="opportunity">
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <BusinessIcon sx={{ mr: 1, color: "primary.main" }} />
+                    <Typography>Opportunity Data</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="staffing">
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <PeopleIcon sx={{ mr: 1, color: "secondary.main" }} />
+                    <Typography>Staffing Data</Typography>
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
 
             <Paper
               sx={{
@@ -154,23 +214,58 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
                   <Typography variant="body2" color="text.secondary">
                     {(file.size / 1024).toFixed(2)} KB
                   </Typography>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearFile();
-                    }}
-                    sx={{ mt: 2 }}
-                  >
-                    Remove
-                  </Button>
+                  <Chip
+                    label={
+                      selectedFileType === "opportunity"
+                        ? "Opportunity Data"
+                        : "Staffing Data"
+                    }
+                    color={
+                      selectedFileType === "opportunity"
+                        ? "primary"
+                        : "secondary"
+                    }
+                    sx={{ mt: 1 }}
+                  />
+                  <Box sx={{ display: "flex", mt: 2, gap: 2 }}>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearFile();
+                      }}
+                    >
+                      Remove
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color={
+                        selectedFileType === "opportunity"
+                          ? "primary"
+                          : "secondary"
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpload();
+                      }}
+                    >
+                      Upload
+                    </Button>
+                  </Box>
                 </Box>
               ) : (
                 <Box>
                   <CloudUploadIcon
-                    sx={{ fontSize: 48, color: "primary.main", mb: 1 }}
+                    sx={{
+                      fontSize: 48,
+                      color:
+                        selectedFileType === "opportunity"
+                          ? "primary.main"
+                          : "secondary.main",
+                      mb: 1,
+                    }}
                   />
                   <Typography variant="h6">
                     Drag & Drop or Click to Upload
@@ -182,6 +277,19 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
                   >
                     Upload your Excel file (.xlsx or .xls)
                   </Typography>
+                  <Chip
+                    label={
+                      selectedFileType === "opportunity"
+                        ? "Opportunity Data"
+                        : "Staffing Data"
+                    }
+                    color={
+                      selectedFileType === "opportunity"
+                        ? "primary"
+                        : "secondary"
+                    }
+                    sx={{ mt: 1 }}
+                  />
                 </Box>
               )}
               <input
@@ -195,11 +303,12 @@ const FileUploader = ({ onFileUploaded, hasData }) => {
           </Box>
         </DialogContent>
         <DialogActions>
-          {hasData && (
-            <Button onClick={closeUploadDialog} color="primary">
-              Cancel
-            </Button>
-          )}
+          <Button
+            onClick={closeUploadDialog}
+            color={selectedFileType === "opportunity" ? "primary" : "secondary"}
+          >
+            Cancel
+          </Button>
         </DialogActions>
       </Dialog>
     </>
