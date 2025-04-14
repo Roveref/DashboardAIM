@@ -1,3 +1,6 @@
+// Fix for the StaffingTab component
+// The key error is that prepareTimeStackedData() is being called before filteredData is defined
+
 import React, { useState, useEffect } from "react";
 import {
   Grid,
@@ -17,7 +20,6 @@ import {
   Select,
   MenuItem,
   TextField,
-  Autocomplete,
   Table,
   TableBody,
   TableCell,
@@ -25,7 +27,6 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
-  Tooltip,
   Alert,
 } from "@mui/material";
 import {
@@ -40,19 +41,13 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
-  PieChart,
-  Pie,
-  Sector,
-  RadialBarChart,
-  RadialBar,
   AreaChart,
   Area,
+  ReferenceLine,
+  ComposedChart,
 } from "recharts";
-import InfoIcon from "@mui/icons-material/Info";
 import BusinessIcon from "@mui/icons-material/Business";
 import PersonIcon from "@mui/icons-material/Person";
-import GroupWorkIcon from "@mui/icons-material/GroupWork";
-import WorkIcon from "@mui/icons-material/Work";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 
 import * as XLSX from "xlsx";
@@ -176,7 +171,7 @@ const processStaffingData = (fileData) => {
           loa: parseNumeric(row[`LOA - ${period}`]),
           resNoJC: parseNumeric(row[`Res - w/o JC - ${period}`]),
           resWithJC: parseNumeric(row[`Res - w/ JC - ${period}`]),
-          sellOn: parseNumeric(row[`Oth - Sell-on - ${period}`]),
+          sellOn: parseNumeric(row[`Oth - Pending - ${period}`]),
           formation: parseNumeric(row[`Oth - Formation - ${period}`]),
           total: parseNumeric(row[`Total - ${period}`]),
         };
@@ -308,81 +303,6 @@ const formatDate = (dateStr) => {
   }
 };
 
-// Active shape for interactive pie chart
-const renderActiveShape = (props) => {
-  const {
-    cx,
-    cy,
-    midAngle,
-    innerRadius,
-    outerRadius,
-    startAngle,
-    endAngle,
-    fill,
-    payload,
-    percent,
-    value,
-  } = props;
-  const sin = Math.sin(-midAngle * (Math.PI / 180));
-  const cos = Math.cos(-midAngle * (Math.PI / 180));
-  const sx = cx + (outerRadius + 10) * cos;
-  const sy = cy + (outerRadius + 10) * sin;
-  const mx = cx + (outerRadius + 30) * cos;
-  const my = cy + (outerRadius + 30) * sin;
-  const ex = mx + (cos >= 0 ? 1 : -1) * 22;
-  const ey = my;
-  const textAnchor = cos >= 0 ? "start" : "end";
-
-  return (
-    <g>
-      <Sector
-        cx={cx}
-        cy={cy}
-        innerRadius={innerRadius}
-        outerRadius={outerRadius}
-        startAngle={startAngle}
-        endAngle={endAngle}
-        fill={fill}
-      />
-      <Sector
-        cx={cx}
-        cy={cy}
-        startAngle={startAngle}
-        endAngle={endAngle}
-        innerRadius={outerRadius + 6}
-        outerRadius={outerRadius + 10}
-        fill={fill}
-      />
-      <path
-        d={`M${sx},${sy}L${mx},${my}L${ex},${ey}`}
-        stroke={fill}
-        fill="none"
-      />
-      <circle cx={ex} cy={ey} r={2} fill={fill} stroke="none" />
-      <text
-        x={ex + (cos >= 0 ? 1 : -1) * 12}
-        y={ey}
-        textAnchor={textAnchor}
-        fill="#333"
-        fontSize={12}
-        fontWeight="bold"
-      >
-        {payload.name}
-      </text>
-      <text
-        x={ex + (cos >= 0 ? 1 : -1) * 12}
-        y={ey}
-        dy={18}
-        textAnchor={textAnchor}
-        fill="#666"
-        fontSize={12}
-      >
-        {`${value.toFixed(1)} hours (${(percent * 100).toFixed(1)}%)`}
-      </text>
-    </g>
-  );
-};
-
 const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   const theme = useTheme();
   const [staffingData, setStaffingData] = useState([]);
@@ -391,7 +311,6 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   const [roles, setRoles] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [sortConfig, setSortConfig] = useState({
     key: "averageUtilization",
@@ -401,7 +320,227 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [activeTimeIndex, setActiveTimeIndex] = useState(0);
   const [activeRoleIndex, setActiveRoleIndex] = useState(0);
-  const [pieChartActiveIndex, setPieChartActiveIndex] = useState(0);
+
+  // Helper function to create proper waterfall chart data with running totals
+  const createWaterfallData = (metrics) => {
+    // Initialize data array with a starting point
+    const data = [
+      {
+        name: "Base",
+        value: 0,
+        fill: "#e0e0e0",
+        isStartEnd: true,
+        displayValue: 0,
+        barValue: 0,
+      },
+    ];
+
+    // Track running total
+    let runningTotal = 0;
+
+    // Add each component with its contribution
+    const components = [
+      {
+        name: "Chargeable",
+        value: metrics.totalChargeable,
+        fill: "#2e7d32", // success.main
+        contribution: (
+          (metrics.totalChargeable / metrics.totalNetAvailable) *
+          100
+        ).toFixed(1),
+      },
+      {
+        name: "Pending",
+        value: metrics.totalSellOn,
+        fill: "#1976d2", // primary.main
+        contribution: (
+          (metrics.totalSellOn / metrics.totalNetAvailable) *
+          100
+        ).toFixed(1),
+      },
+      {
+        name: "Res w/ JC",
+        value: metrics.totalResWithJC,
+        fill: "#7b1fa2", // purple[700]
+        contribution: (
+          (metrics.totalResWithJC / metrics.totalNetAvailable) *
+          100
+        ).toFixed(1),
+      },
+      {
+        name: "Res w/o JC",
+        value: metrics.totalResNoJC,
+        fill: "#9c27b0", // purple[500]
+        contribution: (
+          (metrics.totalResNoJC / metrics.totalNetAvailable) *
+          100
+        ).toFixed(1),
+      },
+      {
+        name: "Formation",
+        value: metrics.totalFormation,
+        fill: "#757575", // grey[600]
+        contribution: (
+          (metrics.totalFormation / metrics.totalNetAvailable) *
+          100
+        ).toFixed(1),
+      },
+    ];
+
+    // Process each component
+    components.forEach((component) => {
+      // Store the original value for display
+      const displayValue = component.value;
+
+      // Update running total
+      runningTotal += component.value;
+
+      // Add to the data array with the calculated values
+      data.push({
+        ...component,
+        displayValue, // Original value for tooltip
+        runningTotal, // Current total after this component
+        previousTotal: runningTotal - displayValue, // Total before this component
+        barValue: component.value, // Actual bar height
+      });
+    });
+
+    // Add final total bar
+    data.push({
+      name: "Total",
+      value: metrics.totalNetAvailable,
+      fill: "#0288d1", // blue[600]
+      isStartEnd: true,
+      displayValue: metrics.totalNetAvailable,
+      barValue: metrics.totalNetAvailable,
+      runningTotal: metrics.totalNetAvailable,
+    });
+
+    return data;
+  };
+
+  // Enhanced tooltip for waterfall chart
+  const WaterfallTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const theme = useTheme();
+      const item = payload[0].payload;
+
+      return (
+        <Card
+          sx={{
+            p: 1.5,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600}>
+            {item.name}
+          </Typography>
+
+          {item.isStartEnd ? (
+            item.name === "Base" ? (
+              <Typography variant="body2">Starting point: 0 hours</Typography>
+            ) : (
+              <Typography variant="body2">
+                Total: {item.displayValue.toFixed(1)} hours (100%)
+              </Typography>
+            )
+          ) : (
+            <>
+              <Typography variant="body2">
+                {item.displayValue.toFixed(1)} hours ({item.contribution}%)
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Running total: {item.runningTotal.toFixed(1)} hours
+              </Typography>
+            </>
+          )}
+        </Card>
+      );
+    }
+    return null;
+  };
+
+  // Improved vertical waterfall chart component
+  const UtilizationWaterfallChart = ({ metrics }) => {
+    const theme = useTheme();
+
+    // Prepare waterfall data
+    const waterfallData = createWaterfallData(metrics);
+
+    // Create a reference array for dashed lines (connecting segments)
+    const connectingReferences = [];
+    for (let i = 1; i < waterfallData.length; i++) {
+      const prevItem = waterfallData[i - 1];
+      const currentItem = waterfallData[i];
+
+      if (!currentItem.isStartEnd && i < waterfallData.length - 1) {
+        connectingReferences.push({
+          x1: i - 0.2,
+          y1: prevItem.runningTotal,
+          x2: i + 0.2,
+          y2: prevItem.runningTotal,
+          key: `connector-${i}`,
+        });
+      }
+    }
+
+    return (
+      <Box sx={{ height: 400, mt: 2 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
+            data={waterfallData}
+            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis
+              dataKey="name"
+              tickLine={false}
+              axisLine={{ stroke: theme.palette.divider }}
+            />
+            <YAxis
+              tickFormatter={(value) => value.toLocaleString()}
+              axisLine={{ stroke: theme.palette.divider }}
+            />
+            <RechartsTooltip content={<WaterfallTooltip />} />
+
+            {/* Main bars */}
+            {waterfallData.map((entry, index) => (
+              <Bar
+                key={`bar-${index}`}
+                dataKey="barValue"
+                fill={entry.fill}
+                stackId="stack"
+                isAnimationActive={false}
+                name={entry.name}
+                legendType="none"
+                baseValue={entry.previousTotal || 0}
+                radius={[4, 4, 0, 0]}
+              >
+                <Cell />
+              </Bar>
+            ))}
+
+            {/* Add reference lines for connecting segments */}
+            {connectingReferences.map((ref) => (
+              <ReferenceLine
+                key={ref.key}
+                segment={{ x: ref.x1, y: ref.y1, x2: ref.x2, y2: ref.y2 }}
+                stroke="#888"
+                strokeDasharray="3 3"
+                ifOverflow="extendDomain"
+              />
+            ))}
+
+            <Legend />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </Box>
+    );
+  };
 
   useEffect(() => {
     // Check if we have the file data available
@@ -483,20 +622,14 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   // Handle filter changes
   const handleTeamChange = (event) => {
     setSelectedTeam(event.target.value);
-    setSelectedEmployee(null);
   };
 
   const handleRoleChange = (event) => {
     setSelectedRole(event.target.value);
-    setSelectedEmployee(null);
   };
 
   const handlePeriodChange = (event) => {
     setSelectedPeriod(event.target.value);
-  };
-
-  const handleEmployeeChange = (event, value) => {
-    setSelectedEmployee(value);
   };
 
   // Handle sorting
@@ -508,26 +641,12 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     setSortConfig({ key, direction });
   };
 
-  // Pie chart mouse event handlers
-  const onPieEnter = (_, index) => {
-    setPieChartActiveIndex(index);
-  };
-
   // Filter the data based on selections
   const filteredData = staffingData.filter((employee) => {
     if (selectedTeam && employee.team !== selectedTeam) return false;
     if (selectedRole && employee.role !== selectedRole) return false;
-    if (selectedEmployee && employee.name !== selectedEmployee.name)
-      return false;
     return true;
   });
-
-  // Get all employees for autocomplete
-  const employeeOptions = staffingData.map((emp) => ({
-    name: emp.name,
-    team: emp.team,
-    role: emp.role,
-  }));
 
   // Sort the data
   const sortedData = [...filteredData].sort((a, b) => {
@@ -547,53 +666,409 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     }
   });
 
-  // Calculate team utilization for the selected period
-  const calculateTeamUtilization = () => {
-    const teamData = {};
+  const prepareNormalizedTimeStackedData = () => {
+    return periods.map((period) => {
+      const periodData = { period };
 
-    filteredData.forEach((employee) => {
-      const team = employee.team;
-      if (!teamData[team]) {
-        teamData[team] = {
-          name: team,
-          totalChargeable: 0,
-          totalAvailable: 0,
-          employeeCount: 0,
-        };
-      }
+      // Initialize with zero values
+      periodData.Chargeable = 0;
+      periodData.SellOn = 0;
+      periodData.ResWithJC = 0;
+      periodData.ResNoJC = 0;
+      periodData.Formation = 0;
 
-      if (selectedPeriod) {
-        // For a specific period
-        const periodData = employee.periods.find(
-          (p) => p.period === selectedPeriod
-        );
-        if (periodData) {
-          teamData[team].totalChargeable += periodData.chargeable;
-          teamData[team].totalAvailable += periodData.total;
-          teamData[team].employeeCount += 1;
+      // Store original hour values for tooltip
+      periodData.Chargeable_Hours = 0;
+      periodData.SellOn_Hours = 0;
+      periodData.ResWithJC_Hours = 0;
+      periodData.ResNoJC_Hours = 0;
+      periodData.Formation_Hours = 0;
+
+      // Calculate totals for this period
+      let netAvailable = 0;
+
+      filteredData.forEach((employee) => {
+        const empPeriod = employee.periods.find((p) => p.period === period);
+        if (empPeriod) {
+          periodData.Chargeable_Hours += empPeriod.chargeable || 0;
+          periodData.SellOn_Hours += empPeriod.sellOn || 0;
+          periodData.ResWithJC_Hours += empPeriod.resWithJC || 0;
+          periodData.ResNoJC_Hours += empPeriod.resNoJC || 0;
+          periodData.Formation_Hours += empPeriod.formation || 0;
+
+          // Calculate net available total
+          netAvailable += empPeriod.total || 0;
         }
-      } else {
-        // For all periods (total)
-        teamData[team].totalChargeable += employee.totalChargeable;
-        teamData[team].totalAvailable += employee.totalAvailable;
-        teamData[team].employeeCount += 1;
-      }
-    });
+      });
 
-    return Object.values(teamData)
-      .map((team) => ({
-        ...team,
-        utilization:
-          team.totalAvailable > 0
-            ? (team.totalChargeable / team.totalAvailable) * 100
-            : 0,
-        utilizationStatus: getUtilizationStatus(
-          team.totalAvailable > 0
-            ? (team.totalChargeable / team.totalAvailable) * 100
-            : 0
-        ),
-      }))
-      .sort((a, b) => b.utilization - a.utilization);
+      // Store the net available for reference
+      periodData.NetAvailable = netAvailable;
+
+      // Convert to percentages
+      if (netAvailable > 0) {
+        periodData.Chargeable =
+          (periodData.Chargeable_Hours / netAvailable) * 100;
+        periodData.SellOn = (periodData.SellOn_Hours / netAvailable) * 100;
+        periodData.ResWithJC =
+          (periodData.ResWithJC_Hours / netAvailable) * 100;
+        periodData.ResNoJC = (periodData.ResNoJC_Hours / netAvailable) * 100;
+        periodData.Formation =
+          (periodData.Formation_Hours / netAvailable) * 100;
+      }
+
+      return periodData;
+    });
+  };
+
+  const EnhancedColumnTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const periodData = payload[0].payload;
+
+      // Calculate column totals
+      const revenueTotal =
+        (periodData.Chargeable_Hours || 0) + (periodData.SellOn_Hours || 0);
+      const reservationsTotal =
+        (periodData.ResWithJC_Hours || 0) + (periodData.ResNoJC_Hours || 0);
+      const otherTotal = periodData.Formation_Hours || 0;
+
+      // Calculate column percentages
+      const revenueTotalPct =
+        periodData.NetAvailable > 0
+          ? (revenueTotal / periodData.NetAvailable) * 100
+          : 0;
+      const reservationsTotalPct =
+        periodData.NetAvailable > 0
+          ? (reservationsTotal / periodData.NetAvailable) * 100
+          : 0;
+      const otherTotalPct =
+        periodData.NetAvailable > 0
+          ? (otherTotal / periodData.NetAvailable) * 100
+          : 0;
+
+      return (
+        <Card
+          sx={{
+            p: 1.5,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+            minWidth: 500,
+          }}
+        >
+          <Typography
+            variant="subtitle2"
+            fontWeight={600}
+            sx={{ pb: 1, borderBottom: "1px solid", borderColor: "divider" }}
+          >
+            Period: {periodData.period} - Total Net Available:{" "}
+            {periodData.NetAvailable.toFixed(1)} hours
+          </Typography>
+
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 1.5,
+              my: 1.5,
+            }}
+          >
+            {/* Revenue Column */}
+            <Box>
+              <Typography
+                variant="body2"
+                fontWeight={600}
+                color="primary.main"
+                sx={{ mb: 0.75 }}
+              >
+                Revenue-Generating
+              </Typography>
+
+              <Box sx={{ mb: 0.5 }}>
+                <Typography variant="body2" color="success.main">
+                  Chargeable:
+                </Typography>
+                <Typography variant="body2">
+                  {periodData.Chargeable_Hours?.toFixed(1) || 0} hours (
+                  {periodData.Chargeable?.toFixed(1) || 0}%)
+                </Typography>
+              </Box>
+
+              <Box sx={{ mb: 0.5 }}>
+                <Typography variant="body2" color="primary.light">
+                  Pending:
+                </Typography>
+                <Typography variant="body2">
+                  {periodData.SellOn_Hours?.toFixed(1) || 0} hours (
+                  {periodData.SellOn?.toFixed(1) || 0}%)
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 1,
+                  pt: 0.5,
+                  borderTop: "1px dotted",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="body2" fontWeight={600}>
+                  Column Total:
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {revenueTotal.toFixed(1)} hours ({revenueTotalPct.toFixed(1)}
+                  %)
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Reservations Column */}
+            <Box>
+              <Typography
+                variant="body2"
+                fontWeight={600}
+                color="secondary.main"
+                sx={{ mb: 0.75 }}
+              >
+                Reservations
+              </Typography>
+
+              <Box sx={{ mb: 0.5 }}>
+                <Typography variant="body2" color="primary.main">
+                  Res w/ JC:
+                </Typography>
+                <Typography variant="body2">
+                  {periodData.ResWithJC_Hours?.toFixed(1) || 0} hours (
+                  {periodData.ResWithJC?.toFixed(1) || 0}%)
+                </Typography>
+              </Box>
+
+              <Box sx={{ mb: 0.5 }}>
+                <Typography variant="body2" color="primary.dark">
+                  Res w/o JC:
+                </Typography>
+                <Typography variant="body2">
+                  {periodData.ResNoJC_Hours?.toFixed(1) || 0} hours (
+                  {periodData.ResNoJC?.toFixed(1) || 0}%)
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 1,
+                  pt: 0.5,
+                  borderTop: "1px dotted",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="body2" fontWeight={600}>
+                  Column Total:
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {reservationsTotal.toFixed(1)} hours (
+                  {reservationsTotalPct.toFixed(1)}%)
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Other Categories Column */}
+            <Box>
+              <Typography
+                variant="body2"
+                fontWeight={600}
+                color="warning.main"
+                sx={{ mb: 0.75 }}
+              >
+                Other Categories
+              </Typography>
+
+              <Box sx={{ mb: 0.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Formation:
+                </Typography>
+                <Typography variant="body2">
+                  {periodData.Formation_Hours?.toFixed(1) || 0} hours (
+                  {periodData.Formation?.toFixed(1) || 0}%)
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 1,
+                  pt: 0.5,
+                  borderTop: "1px dotted",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="body2" fontWeight={600}>
+                  Column Total:
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {otherTotal.toFixed(1)} hours ({otherTotalPct.toFixed(1)}%)
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              mt: 1,
+              pt: 0.75,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              textAlign: "right",
+            }}
+          >
+            <Typography variant="body2" fontWeight={600}>
+              Grand Total:{" "}
+              {(revenueTotal + reservationsTotal + otherTotal).toFixed(1)} hours
+              (
+              {(revenueTotalPct + reservationsTotalPct + otherTotalPct).toFixed(
+                1
+              )}
+              %)
+            </Typography>
+          </Box>
+        </Card>
+      );
+    }
+
+    return null;
+  };
+
+  // Add this enhanced tooltip component
+  const EnhancedTimeBreakdownTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const periodData = payload[0].payload;
+
+      return (
+        <Card
+          sx={{
+            p: 1.5,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600}>
+            Period: {periodData.period}
+          </Typography>
+
+          {payload.map((entry) => {
+            // Skip non-display fields
+            if (
+              entry.dataKey.endsWith("_Hours") ||
+              entry.dataKey === "NetAvailable" ||
+              entry.dataKey === "period"
+            ) {
+              return null;
+            }
+
+            // Get the corresponding hours value
+            const hours = periodData[`${entry.dataKey}_Hours`] || 0;
+            const percentage = entry.value || 0;
+
+            return (
+              <Typography
+                key={entry.dataKey}
+                variant="body2"
+                sx={{
+                  mt: 1,
+                  color: entry.color,
+                }}
+              >
+                {entry.name}: {hours.toFixed(1)} hours ({percentage.toFixed(1)}
+                %)
+              </Typography>
+            );
+          })}
+
+          <Typography variant="body2" sx={{ mt: 1.5, fontStyle: "italic" }}>
+            Total Net Available: {periodData.NetAvailable.toFixed(1)} hours
+          </Typography>
+        </Card>
+      );
+    }
+    return null;
+  };
+
+  // Prepare time stacked data for the area chart
+  const prepareTimeStackedData = () => {
+    return periods.map((period) => {
+      const periodData = { period };
+
+      // Initialize all categories with zero
+      // 1. Most important - what we can charge clients
+      periodData.Chargeable = 0;
+
+      // 2. Second tier - potential bookable hours
+      periodData.SellOn = 0;
+      periodData.ResWithJC = 0;
+      periodData.ResNoJC = 0;
+
+      // 3. Third tier - non-chargeable but still working
+      periodData.Formation = 0;
+
+      // 4. Time off
+      periodData.Vacation = 0;
+      periodData.LOA = 0;
+
+      // 5. Totals for rates
+      periodData.NetAvailable = 0;
+      periodData.TotalAvailable = 0;
+      periodData.TU = 0;
+      periodData.TP = 0;
+      periodData.OptimalTU = 0;
+
+      // Calculate totals for this period
+      filteredData.forEach((employee) => {
+        const empPeriod = employee.periods.find((p) => p.period === period);
+        if (empPeriod) {
+          periodData.Chargeable += empPeriod.chargeable || 0;
+          periodData.SellOn += empPeriod.sellOn || 0;
+          periodData.ResWithJC += empPeriod.resWithJC || 0;
+          periodData.ResNoJC += empPeriod.resNoJC || 0;
+          periodData.Formation += empPeriod.formation || 0;
+          periodData.Vacation += empPeriod.vacation || 0;
+          periodData.LOA += empPeriod.loa || 0;
+
+          // Calculate totals
+          periodData.NetAvailable += empPeriod.total || 0;
+        }
+      });
+
+      // Calculate total available hours
+      periodData.TotalAvailable =
+        periodData.NetAvailable + periodData.Vacation + periodData.LOA;
+
+      // Calculate potential bookable
+      const potentialBookable =
+        periodData.Chargeable +
+        periodData.SellOn +
+        periodData.ResWithJC +
+        periodData.ResNoJC;
+
+      // Calculate rates
+      periodData.TU =
+        periodData.NetAvailable > 0
+          ? (periodData.Chargeable / periodData.NetAvailable) * 100
+          : 0;
+
+      periodData.TP =
+        periodData.TotalAvailable > 0
+          ? (periodData.Chargeable / periodData.TotalAvailable) * 100
+          : 0;
+
+      periodData.OptimalTU =
+        periodData.NetAvailable > 0
+          ? (potentialBookable / periodData.NetAvailable) * 100
+          : 0;
+
+      return periodData;
+    });
   };
 
   // Calculate role utilization for the selected period
@@ -698,8 +1173,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     return trendData;
   };
 
-  // Calculate time breakdown by category (chargeable, vacation, LOA, etc.)
-  const calculateTimeBreakdown = () => {
+  const calculateBusinessMetrics = () => {
     let totalChargeable = 0;
     let totalVacation = 0;
     let totalLOA = 0;
@@ -707,7 +1181,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     let totalResWithJC = 0;
     let totalSellOn = 0;
     let totalFormation = 0;
-    let totalTime = 0;
+    let totalNetAvailable = 0; // This is "Total" in the Excel (net available hours after VAC & LOA)
 
     filteredData.forEach((employee) => {
       if (selectedPeriod) {
@@ -723,7 +1197,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
           totalResWithJC += periodData.resWithJC;
           totalSellOn += periodData.sellOn;
           totalFormation += periodData.formation;
-          totalTime += periodData.total;
+          totalNetAvailable += periodData.total;
         }
       } else {
         // For all periods
@@ -734,162 +1208,112 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
         totalResWithJC += employee.totalResWithJC;
         totalSellOn += employee.totalSellOn;
         totalFormation += employee.totalFormation;
-        totalTime += employee.totalAvailable;
+        totalNetAvailable += employee.totalAvailable;
       }
     });
 
+    // Calculate business metrics
+    const totalAvailableHours = totalNetAvailable + totalVacation + totalLOA;
+    const potentialBookableHours =
+      totalChargeable + totalResNoJC + totalResWithJC + totalSellOn;
+    const nonChargeableHours = totalFormation;
+
+    // Calculate rates
+    const tu =
+      totalNetAvailable > 0 ? (totalChargeable / totalNetAvailable) * 100 : 0;
+    const tp =
+      totalAvailableHours > 0
+        ? (totalChargeable / totalAvailableHours) * 100
+        : 0;
+    const optimalTu =
+      totalNetAvailable > 0
+        ? (potentialBookableHours / totalNetAvailable) * 100
+        : 0;
+
+    return {
+      // Hours metrics
+      totalChargeable,
+      totalVacation,
+      totalLOA,
+      totalResNoJC,
+      totalResWithJC,
+      totalSellOn,
+      totalFormation,
+      totalNetAvailable,
+      totalAvailableHours,
+      potentialBookableHours,
+      nonChargeableHours,
+
+      // Rate metrics
+      tu,
+      tp,
+      optimalTu,
+
+      // Status metrics
+      tuStatus: getUtilizationStatus(tu),
+      tpStatus: getUtilizationStatus(tp),
+      optimalTuStatus: getUtilizationStatus(optimalTu),
+
+      // Employee count
+      employeeCount: filteredData.length,
+    };
+  };
+  // Calculate time breakdown by category (chargeable, vacation, LOA, etc.)
+  const calculateTimeBreakdown = () => {
+    const metrics = calculateBusinessMetrics();
+
+    // Prepare data for stacked bar chart with clear grouping
     return [
       {
-        name: "Chargeable",
-        value: totalChargeable,
-        percentage: totalTime > 0 ? (totalChargeable / totalTime) * 100 : 0,
-        fill: theme.palette.success.main,
-      },
-      {
-        name: "Vacation",
-        value: totalVacation,
-        percentage: totalTime > 0 ? (totalVacation / totalTime) * 100 : 0,
-        fill: theme.palette.info.main,
-      },
-      {
-        name: "Leave of Absence",
-        value: totalLOA,
-        percentage: totalTime > 0 ? (totalLOA / totalTime) * 100 : 0,
-        fill: theme.palette.warning.main,
-      },
-      {
-        name: "Reservation (no JC)",
-        value: totalResNoJC,
-        percentage: totalTime > 0 ? (totalResNoJC / totalTime) * 100 : 0,
-        fill: theme.palette.secondary.main,
-      },
-      {
-        name: "Reservation (with JC)",
-        value: totalResWithJC,
-        percentage: totalTime > 0 ? (totalResWithJC / totalTime) * 100 : 0,
-        fill: theme.palette.primary.main,
-      },
-      {
-        name: "Sell-on",
-        value: totalSellOn,
-        percentage: totalTime > 0 ? (totalSellOn / totalTime) * 100 : 0,
-        fill: theme.palette.error.light,
-      },
-      {
-        name: "Formation",
-        value: totalFormation,
-        percentage: totalTime > 0 ? (totalFormation / totalTime) * 100 : 0,
-        fill: theme.palette.error.dark,
-      },
-    ]
-      .filter((item) => item.value > 0)
-      .sort((a, b) => b.value - a.value);
-  };
+        name: "Time Allocation",
+        // Most important - what we can charge clients
+        Chargeable: metrics.totalChargeable,
 
-  // Prepare data for stacked area chart
-  const prepareTimeStackedData = () => {
-    return periods.map((period) => {
-      const periodData = { period };
-      
-      // Initialize all categories with zero
-      periodData.Chargeable = 0;
-      periodData.Vacation = 0;
-      periodData.LOA = 0;
-      periodData.ResNoJC = 0;
-      periodData.ResWithJC = 0;
-      periodData.SellOn = 0;
-      periodData.Formation = 0;
-      
-      // Sum up values for this period
-      filteredData.forEach(employee => {
-        const empPeriod = employee.periods.find(p => p.period === period);
-        if (empPeriod) {
-          periodData.Chargeable += empPeriod.chargeable || 0;
-          periodData.Vacation += empPeriod.vacation || 0;
-          periodData.LOA += empPeriod.loa || 0;
-          periodData.ResNoJC += empPeriod.resNoJC || 0;
-          periodData.ResWithJC += empPeriod.resWithJC || 0;
-          periodData.SellOn += empPeriod.sellOn || 0;
-          periodData.Formation += empPeriod.formation || 0;
-        }
-      });
-      
-      return periodData;
-    });
+        // Second tier - potential bookable hours
+        Pending: metrics.totalSellOn,
+        "Reservation (with JC)": metrics.totalResWithJC,
+        "Reservation (no JC)": metrics.totalResNoJC,
+
+        // Third tier - non-chargeable but still working
+        Formation: metrics.totalFormation,
+
+        // Time off - not included in net available
+        "Leave of Absence": metrics.totalLOA,
+        Vacation: metrics.totalVacation,
+
+        // Totals for reference
+        netAvailable: metrics.totalNetAvailable,
+        totalAvailable: metrics.totalAvailableHours,
+      },
+    ];
   };
 
   // Calculate overall utilization based on selected filters
   const calculateOverallUtilization = () => {
-    let totalChargeable = 0;
-    let totalAvailable = 0;
-    let employeeCount = 0;
-
-    filteredData.forEach((employee) => {
-      if (selectedPeriod) {
-        // For specific period
-        const periodData = employee.periods.find(
-          (p) => p.period === selectedPeriod
-        );
-        if (periodData) {
-          totalChargeable += periodData.chargeable;
-          totalAvailable += periodData.total;
-          employeeCount += 1;
-        }
-      } else {
-        // For all periods
-        totalChargeable += employee.totalChargeable;
-        totalAvailable += employee.totalAvailable;
-        employeeCount += 1;
-      }
-    });
-
-    const utilization =
-      totalAvailable > 0 ? (totalChargeable / totalAvailable) * 100 : 0;
+    const metrics = calculateBusinessMetrics();
 
     return {
-      utilization,
-      totalChargeable,
-      totalAvailable,
-      employeeCount,
-      status: getUtilizationStatus(utilization),
+      // Traditional utilization (TU)
+      utilization: metrics.tu,
+      status: metrics.tuStatus,
+
+      // Production rate (TP)
+      productionRate: metrics.tp,
+      productionStatus: metrics.tpStatus,
+
+      // Optimal utilization
+      optimalUtilization: metrics.optimalTu,
+      optimalStatus: metrics.optimalTuStatus,
+
+      // Hours
+      totalChargeable: metrics.totalChargeable,
+      totalNetAvailable: metrics.totalNetAvailable,
+      totalAvailableHours: metrics.totalAvailableHours,
+      potentialBookable: metrics.potentialBookableHours,
+
+      // Employee count
+      employeeCount: metrics.employeeCount,
     };
-  };
-
-  // Get utilization status distribution
-  const getUtilizationStatusDistribution = () => {
-    const statusCounts = {
-      "very-good": 0,
-      average: 0,
-      "not-good": 0,
-      terrible: 0,
-    };
-
-    filteredData.forEach((employee) => {
-      let utilization;
-
-      if (selectedPeriod) {
-        // Get utilization for the selected period
-        const periodData = employee.periods.find(
-          (p) => p.period === selectedPeriod
-        );
-        utilization = periodData ? periodData.utilization : 0;
-      } else {
-        // Use average utilization across all periods
-        utilization = employee.averageUtilization;
-      }
-
-      const status = getUtilizationStatus(utilization);
-      statusCounts[status] += 1;
-    });
-
-    return Object.entries(statusCounts)
-      .filter(([_, count]) => count > 0)
-      .map(([status, count]) => ({
-        name: getUtilizationLabel(status),
-        value: count,
-        status,
-        fill: getUtilizationColor(theme, status),
-      }));
   };
 
   // Custom tooltip for utilization rate charts
@@ -941,11 +1365,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
             {payload[0].name}
           </Typography>
           {payload.map((entry, index) => (
-            <Typography 
-              key={`item-${index}`} 
-              variant="body2" 
-              sx={{ color: entry.color, mt: 1 }}
-            >
+            <Typography key={`item-${index}`} variant="body2" sx={{ mt: 1 }}>
               {`${entry.name}: ${entry.value.toFixed(1)} hours`}
             </Typography>
           ))}
@@ -1022,13 +1442,11 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   }
 
   // Prepare data based on current selections
-  const teamUtilizationData = calculateTeamUtilization();
   const roleUtilizationData = calculateRoleUtilization();
   const teamUtilizationTrend = prepareTeamUtilizationTrendData();
   const timeBreakdownData = calculateTimeBreakdown();
   const timeStackedData = prepareTimeStackedData();
   const overallUtilization = calculateOverallUtilization();
-  const utilizationDistribution = getUtilizationStatusDistribution();
 
   // Calculate color for overall utilization
   const overallUtilizationColor = getStatusColor(
@@ -1118,28 +1536,13 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                   ))}
                 </Select>
               </FormControl>
-
-              {/* Employee Filter */}
-              <Autocomplete
-                id="employee-filter"
-                options={employeeOptions}
-                getOptionLabel={(option) => `${option.name} (${option.team})`}
-                sx={{ minWidth: 250 }}
-                value={selectedEmployee}
-                onChange={handleEmployeeChange}
-                renderInput={(params) => (
-                  <TextField {...params} label="Employee" />
-                )}
-              />
             </Box>
           </Paper>
         </Grid>
-
         {/* Top Row: KPIs */}
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12}>
           <Card
             sx={{
-              height: "100%",
               borderRadius: 3,
               boxShadow: 2,
               transition: "all 0.3s",
@@ -1156,7 +1559,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 color="text.primary"
                 gutterBottom
               >
-                Overall Utilization
+                Utilization Metrics
                 {selectedPeriod && (
                   <Chip
                     label={`Period: ${selectedPeriod}`}
@@ -1167,355 +1570,218 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 )}
               </Typography>
               <Divider sx={{ my: 2 }} />
-              <Box sx={{ textAlign: "center", mt: 3, mb: 2 }}>
-                <Typography
-                  variant="h3"
-                  component="div"
-                  fontWeight={700}
-                  sx={{ color: overallUtilizationColor }}
-                >
-                  {overallUtilization.utilization.toFixed(1)}%
+
+              {/* Three metrics boxes in a row */}
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      backgroundColor: alpha(
+                        getStatusColor(overallUtilization.utilization),
+                        0.1
+                      ),
+                      border: "1px solid",
+                      borderColor: alpha(
+                        getStatusColor(overallUtilization.utilization),
+                        0.2
+                      ),
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      TU (Taux d'Utilisation)
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      fontWeight={700}
+                      sx={{
+                        color: getStatusColor(overallUtilization.utilization),
+                      }}
+                    >
+                      {overallUtilization.utilization.toFixed(1)}%
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: getStatusColor(overallUtilization.utilization),
+                      }}
+                    >
+                      Chargeable / Net Available
+                    </Typography>
+                  </Box>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      backgroundColor: alpha(
+                        getStatusColor(overallUtilization.productionRate),
+                        0.1
+                      ),
+                      border: "1px solid",
+                      borderColor: alpha(
+                        getStatusColor(overallUtilization.productionRate),
+                        0.2
+                      ),
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      TP (Taux de Production)
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      fontWeight={700}
+                      sx={{
+                        color: getStatusColor(
+                          overallUtilization.productionRate
+                        ),
+                      }}
+                    >
+                      {overallUtilization.productionRate.toFixed(1)}%
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: getStatusColor(
+                          overallUtilization.productionRate
+                        ),
+                      }}
+                    >
+                      Chargeable / Available Hours
+                    </Typography>
+                  </Box>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      backgroundColor: alpha(
+                        getStatusColor(overallUtilization.optimalUtilization),
+                        0.1
+                      ),
+                      border: "1px solid",
+                      borderColor: alpha(
+                        getStatusColor(overallUtilization.optimalUtilization),
+                        0.2
+                      ),
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      Optimal TU
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      fontWeight={700}
+                      sx={{
+                        color: getStatusColor(
+                          overallUtilization.optimalUtilization
+                        ),
+                      }}
+                    >
+                      {overallUtilization.optimalUtilization.toFixed(1)}%
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: getStatusColor(
+                          overallUtilization.optimalUtilization
+                        ),
+                      }}
+                    >
+                      Potential Bookable / Net Available
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              {/* Waterfall chart */}
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                  Time Allocation Breakdown
                 </Typography>
-                <Chip
-                  label={getUtilizationLabel(overallUtilization.status)}
-                  color={
-                    overallUtilization.status === "very-good"
-                      ? "success"
-                      : overallUtilization.status === "average"
-                      ? "warning"
-                      : overallUtilization.status === "not-good"
-                      ? "info"
-                      : "error"
-                  }
-                  sx={{ mt: 1 }}
+                <UtilizationWaterfallChart
+                  metrics={calculateBusinessMetrics()}
                 />
               </Box>
-              <Divider sx={{ my: 2 }} />
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={6}>
+
+              {/* Hours breakdown */}
+              <Divider sx={{ my: 3 }} />
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                Hours Summary
+              </Typography>
+
+              <Grid container spacing={2}>
+                <Grid item xs={6} sm={3}>
                   <Typography variant="body2" color="text.secondary">
-                    Total Chargeable
+                    Chargeable Hours
                   </Typography>
                   <Typography variant="body1" fontWeight={600}>
-                    {overallUtilization.totalChargeable.toFixed(1)} hours
+                    {overallUtilization.totalChargeable.toFixed(1)} hrs
                   </Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid item xs={6} sm={3}>
                   <Typography variant="body2" color="text.secondary">
-                    Total Available
+                    Net Available Hours
                   </Typography>
                   <Typography variant="body1" fontWeight={600}>
-                    {overallUtilization.totalAvailable.toFixed(1)} hours
+                    {overallUtilization.totalNetAvailable.toFixed(1)} hrs
                   </Typography>
                 </Grid>
-                <Grid item xs={12}>
+                <Grid item xs={6} sm={3}>
                   <Typography variant="body2" color="text.secondary">
-                    Employees
+                    Potential Bookable
                   </Typography>
                   <Typography variant="body1" fontWeight={600}>
-                    {overallUtilization.employeeCount}
+                    {overallUtilization.potentialBookable.toFixed(1)} hrs
+                  </Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2" color="text.secondary">
+                    Available Hours (incl. VAC+LOA)
+                  </Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {overallUtilization.totalAvailableHours.toFixed(1)} hrs
                   </Typography>
                 </Grid>
               </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
 
-        {/* Utilization Distribution - Pie Chart */}
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              height: "100%",
-              borderRadius: 3,
-              boxShadow: 2,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-            }}
-          >
-            <CardContent sx={{ p: 3 }}>
-              <Typography
-                variant="h6"
-                fontWeight={700}
-                color="text.primary"
-                gutterBottom
+              <Box
+                sx={{
+                  mt: 2,
+                  p: 2,
+                  bgcolor: alpha(theme.palette.info.main, 0.1),
+                  borderRadius: 2,
+                }}
               >
-                Utilization Distribution
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 230 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadialBarChart 
-                    cx="50%" 
-                    cy="50%" 
-                    innerRadius="20%" 
-                    outerRadius="90%" 
-                    barSize={20} 
-                    data={utilizationDistribution}
-                  >
-                    <RadialBar
-                      minAngle={15}
-                      background
-                      clockWise
-                      dataKey="value"
-                      cornerRadius={10}
-                      label={{
-                        position: 'insideStart',
-                        fill: '#fff',
-                        formatter: (value, entry) => `${entry.name}: ${value}`,
-                      }}
-                    />
-                    <Legend 
-                      iconSize={10} 
-                      layout="vertical" 
-                      verticalAlign="middle" 
-                      wrapperStyle={{ 
-                        right: 0, 
-                        top: '50%', 
-                        transform: 'translate(0, -50%)',
-                        lineHeight: '24px'
-                      }}
-                      formatter={(value) => <span style={{ color: '#666' }}>{value}</span>}
-                    />
-                    <RechartsTooltip
-                      formatter={(value, name) => [`${value} employees`, name]}
-                    />
-                  </RadialBarChart>
-                </ResponsiveContainer>
+                <Typography variant="body2" color="text.secondary">
+                  {overallUtilization.employeeCount} employees •{" "}
+                  {selectedPeriod || "All periods"}
+                </Typography>
               </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Time Breakdown - Improved Pie Chart */}
-        <Grid item xs={12} md={5}>
+        <Grid item xs={12} md={12}>
           <Card
             sx={{
-              height: "100%",
-              borderRadius: 3,
-              boxShadow: 2,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-            }}
-          >
-            <CardContent sx={{ p: 3 }}>
-              <Typography
-                variant="h6"
-                fontWeight={700}
-                color="text.primary"
-                gutterBottom
-              >
-                Time Allocation
-                {selectedPeriod && (
-                  <Chip
-                    label={`Period: ${selectedPeriod}`}
-                    color="primary"
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                )}
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 230 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      activeIndex={pieChartActiveIndex}
-                      activeShape={renderActiveShape}
-                      data={timeBreakdownData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={70}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="value"
-                      onMouseEnter={onPieEnter}
-                    >
-                      {timeBreakdownData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Middle Row: Team & Role Utilization */}
-        <Grid item xs={12} md={6}>
-          <Card
-            sx={{
-              height: "100%",
-              borderRadius: 3,
-              boxShadow: 2,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-              pt: 2,
-            }}
-          >
-            <CardContent sx={{ p: 3 }}>
-              <Typography
-                variant="h6"
-                fontWeight={700}
-                color="text.primary"
-                gutterBottom
-              >
-                Team Utilization
-                {selectedPeriod && (
-                  <Chip
-                    label={`Period: ${selectedPeriod}`}
-                    color="primary"
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                )}
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 300 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={teamUtilizationData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      horizontal={true}
-                      vertical={false}
-                    />
-                    <XAxis
-                      type="number"
-                      domain={[0, 100]}
-                      tickFormatter={(value) => `${value}%`}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fontSize: 12 }}
-                    />
-                    <RechartsTooltip content={<UtilizationTooltip />} />
-                    <Bar 
-                      dataKey="utilization" 
-                      name="Utilization Rate"
-                      isAnimationActive={true}
-                      animationBegin={0}
-                      animationDuration={1000}
-                      barSize={20}
-                      radius={[0, 8, 8, 0]}
-                    >
-                      {teamUtilizationData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={getUtilizationColor(
-                            theme,
-                            entry.utilizationStatus
-                          )}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card
-            sx={{
-              height: "100%",
-              borderRadius: 3,
-              boxShadow: 2,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-              pt: 2,
-            }}
-          >
-            <CardContent sx={{ p: 3 }}>
-              <Typography
-                variant="h6"
-                fontWeight={700}
-                color="text.primary"
-                gutterBottom
-              >
-                Role Utilization
-                {selectedPeriod && (
-                  <Chip
-                    label={`Period: ${selectedPeriod}`}
-                    color="primary"
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                )}
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 300 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={roleUtilizationData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      horizontal={true}
-                      vertical={false}
-                    />
-                    <XAxis
-                      type="number"
-                      domain={[0, 100]}
-                      tickFormatter={(value) => `${value}%`}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fontSize: 12 }}
-                    />
-                    <RechartsTooltip content={<UtilizationTooltip />} />
-                    <Bar 
-                      dataKey="utilization" 
-                      name="Utilization Rate"
-                      isAnimationActive={true}
-                      animationBegin={0}
-                      animationDuration={1000}
-                      barSize={20}
-                      radius={[0, 8, 8, 0]}
-                    >
-                      {roleUtilizationData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={getUtilizationColor(
-                            theme,
-                            entry.utilizationStatus
-                          )}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Bottom Row: Trends */}
-        <Grid item xs={12} md={6}>
-          <Card
-            sx={{
-              height: "100%",
               borderRadius: 3,
               boxShadow: 2,
               transition: "all 0.3s",
@@ -1527,13 +1793,13 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
           >
             <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" fontWeight={700} gutterBottom>
-                Team Utilization Trend
+                Utilization Rate Trends
               </Typography>
               <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 350 }}>
+              <Box sx={{ height: 300 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={teamUtilizationTrend}
+                    data={timeStackedData}
                     margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
@@ -1547,43 +1813,46 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                     />
                     <Legend />
 
-                    {/* Show overall trend as a bold line */}
+                    {/* TU - Taux d'Utilisation */}
                     <Line
                       type="monotone"
-                      dataKey="overall"
-                      name="Overall"
-                      stroke={theme.palette.grey[800]}
+                      dataKey="TU"
+                      name="TU"
+                      stroke={theme.palette.success.main}
                       strokeWidth={3}
                       dot={{ r: 4, strokeWidth: 2 }}
                       activeDot={{ r: 8 }}
                     />
 
-                    {/* Show each team as a dotted line */}
-                    {teams.slice(0, 5).map((team, index) => (
-                      <Line
-                        key={team}
-                        type="monotone"
-                        dataKey={team}
-                        name={team}
-                        stroke={
-                          COLORS[index % COLORS.length] ||
-                          theme.palette.primary.main
-                        }
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                    ))}
+                    {/* TP - Taux de Production */}
+                    <Line
+                      type="monotone"
+                      dataKey="TP"
+                      name="TP"
+                      stroke={theme.palette.info.main}
+                      strokeWidth={3}
+                      strokeDasharray="5 5"
+                      dot={{ r: 4, strokeWidth: 2 }}
+                    />
+
+                    {/* Optimal TU */}
+                    <Line
+                      type="monotone"
+                      dataKey="OptimalTU"
+                      name="Optimal TU"
+                      stroke={theme.palette.secondary.main}
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </Box>
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Card
             sx={{
-              height: "100%",
               borderRadius: 3,
               boxShadow: 2,
               transition: "all 0.3s",
@@ -1595,47 +1864,50 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
           >
             <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" fontWeight={700} gutterBottom>
-                Time Allocation Trend
+                Time Allocation Trend (% of Net Available)
               </Typography>
               <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 350 }}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  This chart shows how time allocation evolves across periods as
+                  a percentage of net available hours. Chargeable time and
+                  potential bookable hours are highlighted as the most important
+                  metrics.
+                </Typography>
+              </Box>
+              <Box sx={{ height: 300 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={timeStackedData}
+                    data={prepareNormalizedTimeStackedData()}
                     margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="period" />
-                    <YAxis />
-                    <RechartsTooltip content={<TimeBreakdownTooltip />} />
+                    <YAxis
+                      domain={[0, 100]}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <RechartsTooltip content={<EnhancedColumnTooltip />} />
                     <Legend />
+
+                    {/* 1. Most important - what we can charge clients */}
                     <Area
                       type="monotone"
                       dataKey="Chargeable"
                       stackId="1"
                       stroke={theme.palette.success.main}
                       fill={theme.palette.success.main}
+                      name="Chargeable"
                     />
+
+                    {/* 2. Second tier - potential bookable hours */}
                     <Area
                       type="monotone"
-                      dataKey="Vacation"
+                      dataKey="SellOn"
                       stackId="1"
-                      stroke={theme.palette.info.main}
-                      fill={theme.palette.info.main}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="LOA"
-                      stackId="1"
-                      stroke={theme.palette.warning.main}
-                      fill={theme.palette.warning.main}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="ResNoJC"
-                      stackId="1"
-                      stroke={theme.palette.secondary.main}
-                      fill={theme.palette.secondary.main}
+                      stroke={theme.palette.primary.light}
+                      fill={theme.palette.primary.light}
+                      name="Pending"
                     />
                     <Area
                       type="monotone"
@@ -1643,20 +1915,25 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                       stackId="1"
                       stroke={theme.palette.primary.main}
                       fill={theme.palette.primary.main}
+                      name="Res w/ JC"
                     />
                     <Area
                       type="monotone"
-                      dataKey="SellOn"
+                      dataKey="ResNoJC"
                       stackId="1"
-                      stroke={theme.palette.error.light}
-                      fill={theme.palette.error.light}
+                      stroke={theme.palette.primary.dark}
+                      fill={theme.palette.primary.dark}
+                      name="Res w/o JC"
                     />
+
+                    {/* 3. Third tier - non-chargeable */}
                     <Area
                       type="monotone"
                       dataKey="Formation"
                       stackId="1"
-                      stroke={theme.palette.error.dark}
-                      fill={theme.palette.error.dark}
+                      stroke={theme.palette.grey[400]}
+                      fill={theme.palette.grey[400]}
+                      name="Formation"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -1664,7 +1941,6 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
             </CardContent>
           </Card>
         </Grid>
-
         {/* Employee Table */}
         <Grid item xs={12}>
           <Paper
