@@ -18,8 +18,6 @@ import {
   MenuItem,
   TextField,
   Autocomplete,
-  ToggleButton,
-  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -28,6 +26,7 @@ import {
   TableRow,
   TableSortLabel,
   Tooltip,
+  Alert,
 } from "@mui/material";
 import {
   BarChart,
@@ -43,19 +42,48 @@ import {
   Cell,
   PieChart,
   Pie,
+  Sector,
+  RadialBarChart,
+  RadialBar,
+  AreaChart,
+  Area,
 } from "recharts";
 import InfoIcon from "@mui/icons-material/Info";
 import BusinessIcon from "@mui/icons-material/Business";
 import PersonIcon from "@mui/icons-material/Person";
 import GroupWorkIcon from "@mui/icons-material/GroupWork";
 import WorkIcon from "@mui/icons-material/Work";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 
 import * as XLSX from "xlsx";
 
-// Helper function to parse the Excel file
+// Helper function to safely parse numeric values
+const parseNumeric = (value) => {
+  if (value === undefined || value === null || value === "") return 0;
+  // Handle string values that might contain commas
+  if (typeof value === "string") {
+    value = value.replace(",", ".");
+  }
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+// Helper function to parse the Excel file with the new structure
 const processStaffingData = (fileData) => {
   try {
-    const workbook = XLSX.read(fileData, {
+    // Ensure we have valid file data
+    if (!fileData || !(fileData instanceof ArrayBuffer)) {
+      console.error("Invalid file data:", fileData);
+      throw new Error("Invalid file data format");
+    }
+
+    console.log("Processing file data with size:", fileData.byteLength);
+
+    // Create a Uint8Array from the ArrayBuffer
+    const dataArray = new Uint8Array(fileData);
+
+    // Read the Excel file
+    const workbook = XLSX.read(dataArray, {
       type: "array",
       cellDates: true,
       cellNF: true,
@@ -63,65 +91,158 @@ const processStaffingData = (fileData) => {
 
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
+
+    // Log worksheet info
+    console.log("Excel worksheet range:", worksheet["!ref"]);
+
+    // Convert to JSON with raw: false to keep string formatting
     const rawData = XLSX.utils.sheet_to_json(worksheet, {
       raw: false,
     });
 
     console.log("Raw staffing data loaded:", rawData.length, "rows");
 
-    // Process the data
-    return rawData.map((row) => {
+    // Print first row keys to verify structure
+    if (rawData.length > 0) {
+      const firstRowKeys = Object.keys(rawData[0]);
+      console.log("First row contains", firstRowKeys.length, "columns");
+      console.log("Sample columns:", firstRowKeys.slice(0, 10));
+    }
+
+    // Extract all periods from the first row
+    const firstRow = rawData[0];
+    const periods = [];
+
+    Object.keys(firstRow).forEach((key) => {
+      // Look for period dates in column names (1/4, 16/4, etc.)
+      const matches = key.match(/ - (\d+\/\d+)$/);
+      if (matches && matches[1]) {
+        if (!periods.includes(matches[1])) {
+          periods.push(matches[1]);
+        }
+      }
+    });
+
+    // Sort periods chronologically
+    periods.sort((a, b) => {
+      const [dayA, monthA] = a.split("/").map(Number);
+      const [dayB, monthB] = b.split("/").map(Number);
+
+      if (monthA !== monthB) {
+        return monthA - monthB;
+      }
+      return dayA - dayB;
+    });
+
+    console.log("Detected periods:", periods);
+
+    if (periods.length === 0) {
+      throw new Error("No period columns found in Excel file");
+    }
+
+    // Process each employee row
+    const processedData = rawData.map((row, index) => {
       // Create a cleaned up employee object
       const employee = {
         team: row["Equipe"],
         role: row["Role"],
         name: row["Nom"],
+        arrivalDate: row["Date arrivée"],
+        departureDate: row["Date départ"],
         periods: [],
         averageUtilization: 0,
         totalChargeable: 0,
+        totalVacation: 0,
+        totalLOA: 0,
+        totalResNoJC: 0,
+        totalResWithJC: 0,
+        totalSellOn: 0,
+        totalFormation: 0,
         totalAvailable: 0,
       };
+
+      // Debug the first few rows
+      const debugThisRow = index < 2;
 
       // Process each period
       let totalUtilization = 0;
       let validPeriods = 0;
 
-      for (let i = 1; i <= 11; i++) {
-        const chargeableKey = `Ch ${i}`;
-        const totalKey = `Total ${i}`;
+      periods.forEach((period) => {
+        // Extract values with proper key format (e.g., "Ch - 1/4")
+        const periodValues = {
+          chargeable: parseNumeric(row[`Ch - ${period}`]),
+          vacation: parseNumeric(row[`Vac - ${period}`]),
+          loa: parseNumeric(row[`LOA - ${period}`]),
+          resNoJC: parseNumeric(row[`Res - w/o JC - ${period}`]),
+          resWithJC: parseNumeric(row[`Res - w/ JC - ${period}`]),
+          sellOn: parseNumeric(row[`Oth - Sell-on - ${period}`]),
+          formation: parseNumeric(row[`Oth - Formation - ${period}`]),
+          total: parseNumeric(row[`Total - ${period}`]),
+        };
 
-        if (row[chargeableKey] !== undefined && row[totalKey] !== undefined) {
-          const chargeable = parseFloat(row[chargeableKey]) || 0;
-          const total = parseFloat(row[totalKey]) || 0;
-          const utilization = total > 0 ? (chargeable / total) * 100 : 0;
+        // Calculate utilization
+        const utilization =
+          periodValues.total > 0
+            ? (periodValues.chargeable / periodValues.total) * 100
+            : 0;
 
-          employee.periods.push({
-            period: i,
-            chargeable,
-            total,
-            utilization,
+        // Add to period data
+        const periodData = {
+          period,
+          ...periodValues,
+          utilization,
+        };
+
+        employee.periods.push(periodData);
+
+        // Debug info for first employee
+        if (debugThisRow && period === periods[0]) {
+          console.log(`Employee ${employee.name}, Period ${period}:`);
+          Object.entries(periodValues).forEach(([key, value]) => {
+            console.log(`  - ${key}: ${value}`);
           });
-
-          if (total > 0) {
-            totalUtilization += utilization;
-            validPeriods++;
-            employee.totalChargeable += chargeable;
-            employee.totalAvailable += total;
-          }
+          console.log(`  - Utilization: ${utilization.toFixed(1)}%`);
         }
-      }
+
+        // Update totals if there's available time
+        if (periodValues.total > 0) {
+          totalUtilization += utilization;
+          validPeriods++;
+
+          employee.totalChargeable += periodValues.chargeable;
+          employee.totalVacation += periodValues.vacation;
+          employee.totalLOA += periodValues.loa;
+          employee.totalResNoJC += periodValues.resNoJC;
+          employee.totalResWithJC += periodValues.resWithJC;
+          employee.totalSellOn += periodValues.sellOn;
+          employee.totalFormation += periodValues.formation;
+          employee.totalAvailable += periodValues.total;
+        }
+      });
 
       // Calculate average utilization
       employee.averageUtilization =
-        employee.totalAvailable > 0
-          ? (employee.totalChargeable / employee.totalAvailable) * 100
-          : 0;
+        validPeriods > 0 ? totalUtilization / validPeriods : 0;
+
+      // Debug total calculations
+      if (debugThisRow) {
+        console.log(`Employee ${employee.name} totals:`);
+        console.log(`  - Chargeable: ${employee.totalChargeable}`);
+        console.log(`  - Available: ${employee.totalAvailable}`);
+        console.log(
+          `  - Avg Utilization: ${employee.averageUtilization.toFixed(1)}%`
+        );
+      }
 
       return employee;
     });
+
+    console.log(`Successfully processed ${processedData.length} employees`);
+    return processedData;
   } catch (error) {
     console.error("Error processing staffing data:", error);
-    return [];
+    throw error;
   }
 };
 
@@ -165,42 +286,197 @@ const getUtilizationLabel = (status) => {
   }
 };
 
+// Format date for display
+const formatDate = (dateStr) => {
+  if (!dateStr) return "N/A";
+
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      // Try DD/MM/YY format
+      const parts = dateStr.split("/");
+      if (parts.length === 3) {
+        const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        return `${parts[0]}/${parts[1]}/${year}`;
+      }
+      return dateStr;
+    }
+
+    return date.toLocaleDateString();
+  } catch (e) {
+    return dateStr;
+  }
+};
+
+// Active shape for interactive pie chart
+const renderActiveShape = (props) => {
+  const {
+    cx,
+    cy,
+    midAngle,
+    innerRadius,
+    outerRadius,
+    startAngle,
+    endAngle,
+    fill,
+    payload,
+    percent,
+    value,
+  } = props;
+  const sin = Math.sin(-midAngle * (Math.PI / 180));
+  const cos = Math.cos(-midAngle * (Math.PI / 180));
+  const sx = cx + (outerRadius + 10) * cos;
+  const sy = cy + (outerRadius + 10) * sin;
+  const mx = cx + (outerRadius + 30) * cos;
+  const my = cy + (outerRadius + 30) * sin;
+  const ex = mx + (cos >= 0 ? 1 : -1) * 22;
+  const ey = my;
+  const textAnchor = cos >= 0 ? "start" : "end";
+
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+      />
+      <Sector
+        cx={cx}
+        cy={cy}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        innerRadius={outerRadius + 6}
+        outerRadius={outerRadius + 10}
+        fill={fill}
+      />
+      <path
+        d={`M${sx},${sy}L${mx},${my}L${ex},${ey}`}
+        stroke={fill}
+        fill="none"
+      />
+      <circle cx={ex} cy={ey} r={2} fill={fill} stroke="none" />
+      <text
+        x={ex + (cos >= 0 ? 1 : -1) * 12}
+        y={ey}
+        textAnchor={textAnchor}
+        fill="#333"
+        fontSize={12}
+        fontWeight="bold"
+      >
+        {payload.name}
+      </text>
+      <text
+        x={ex + (cos >= 0 ? 1 : -1) * 12}
+        y={ey}
+        dy={18}
+        textAnchor={textAnchor}
+        fill="#666"
+        fontSize={12}
+      >
+        {`${value.toFixed(1)} hours (${(percent * 100).toFixed(1)}%)`}
+      </text>
+    </g>
+  );
+};
+
 const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   const theme = useTheme();
   const [staffingData, setStaffingData] = useState([]);
+  const [periods, setPeriods] = useState([]);
   const [teams, setTeams] = useState([]);
   const [roles, setRoles] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [viewMode, setViewMode] = useState("team"); // team, employee, role
+  const [selectedPeriod, setSelectedPeriod] = useState("");
   const [sortConfig, setSortConfig] = useState({
     key: "averageUtilization",
     direction: "desc",
   });
+  const [error, setError] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [activeTimeIndex, setActiveTimeIndex] = useState(0);
+  const [activeRoleIndex, setActiveRoleIndex] = useState(0);
+  const [pieChartActiveIndex, setPieChartActiveIndex] = useState(0);
 
   useEffect(() => {
     // Check if we have the file data available
-    if (!staffingFileData || loading) return;
+    if (!staffingFileData || loading) {
+      return;
+    }
 
     try {
       console.log("Processing staffing file data...");
+      console.log("staffingFileData type:", typeof staffingFileData);
+      console.log(
+        "staffingFileData instanceof ArrayBuffer:",
+        staffingFileData instanceof ArrayBuffer
+      );
+
+      if (!(staffingFileData instanceof ArrayBuffer)) {
+        console.warn(
+          "staffingFileData is not an ArrayBuffer. Trying to process anyway."
+        );
+      }
+
+      // Process the data
       const processedData = processStaffingData(staffingFileData);
       console.log(
         "Processed staffing data:",
         processedData.length,
         "employees"
       );
+
+      // Verify the data includes numeric values
+      if (processedData.length > 0) {
+        const sampleEmployee = processedData[0];
+        console.log("Sample employee data:", {
+          name: sampleEmployee.name,
+          totalChargeable: sampleEmployee.totalChargeable,
+          totalAvailable: sampleEmployee.totalAvailable,
+          utilization: sampleEmployee.averageUtilization,
+        });
+
+        if (
+          sampleEmployee.totalChargeable === 0 &&
+          sampleEmployee.totalAvailable > 0
+        ) {
+          console.warn(
+            "Sample employee has 0 chargeable hours but non-zero available hours"
+          );
+        }
+      }
+
       setStaffingData(processedData);
+      setDataLoaded(true);
 
       // Extract teams and roles
       const uniqueTeams = [...new Set(processedData.map((emp) => emp.team))];
       const uniqueRoles = [...new Set(processedData.map((emp) => emp.role))];
 
+      // Extract periods from the first employee
+      const uniquePeriods =
+        processedData.length > 0
+          ? [...processedData[0].periods.map((p) => p.period)]
+          : [];
+
       setTeams(uniqueTeams);
       setRoles(uniqueRoles);
-    } catch (error) {
-      console.error("Error processing staffing data:", error);
+      setPeriods(uniquePeriods);
+
+      // Set default period to the first one if available
+      if (uniquePeriods.length > 0) {
+        setSelectedPeriod(uniquePeriods[0]);
+      }
+
+      setError(null);
+    } catch (err) {
+      console.error("Error processing staffing data:", err);
+      setError(`Error processing staffing data: ${err.message}`);
     }
   }, [staffingFileData, loading]);
 
@@ -215,14 +491,12 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     setSelectedEmployee(null);
   };
 
-  const handleEmployeeChange = (event, value) => {
-    setSelectedEmployee(value);
+  const handlePeriodChange = (event) => {
+    setSelectedPeriod(event.target.value);
   };
 
-  const handleViewModeChange = (event, newMode) => {
-    if (newMode !== null) {
-      setViewMode(newMode);
-    }
+  const handleEmployeeChange = (event, value) => {
+    setSelectedEmployee(value);
   };
 
   // Handle sorting
@@ -232,6 +506,11 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
       direction = "desc";
     }
     setSortConfig({ key, direction });
+  };
+
+  // Pie chart mouse event handlers
+  const onPieEnter = (_, index) => {
+    setPieChartActiveIndex(index);
   };
 
   // Filter the data based on selections
@@ -268,7 +547,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     }
   });
 
-  // Calculate team utilization across all periods
+  // Calculate team utilization for the selected period
   const calculateTeamUtilization = () => {
     const teamData = {};
 
@@ -283,26 +562,41 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
         };
       }
 
-      teamData[team].totalChargeable += employee.totalChargeable;
-      teamData[team].totalAvailable += employee.totalAvailable;
-      teamData[team].employeeCount += 1;
+      if (selectedPeriod) {
+        // For a specific period
+        const periodData = employee.periods.find(
+          (p) => p.period === selectedPeriod
+        );
+        if (periodData) {
+          teamData[team].totalChargeable += periodData.chargeable;
+          teamData[team].totalAvailable += periodData.total;
+          teamData[team].employeeCount += 1;
+        }
+      } else {
+        // For all periods (total)
+        teamData[team].totalChargeable += employee.totalChargeable;
+        teamData[team].totalAvailable += employee.totalAvailable;
+        teamData[team].employeeCount += 1;
+      }
     });
 
-    return Object.values(teamData).map((team) => ({
-      ...team,
-      utilization:
-        team.totalAvailable > 0
-          ? (team.totalChargeable / team.totalAvailable) * 100
-          : 0,
-      utilizationStatus: getUtilizationStatus(
-        team.totalAvailable > 0
-          ? (team.totalChargeable / team.totalAvailable) * 100
-          : 0
-      ),
-    }));
+    return Object.values(teamData)
+      .map((team) => ({
+        ...team,
+        utilization:
+          team.totalAvailable > 0
+            ? (team.totalChargeable / team.totalAvailable) * 100
+            : 0,
+        utilizationStatus: getUtilizationStatus(
+          team.totalAvailable > 0
+            ? (team.totalChargeable / team.totalAvailable) * 100
+            : 0
+        ),
+      }))
+      .sort((a, b) => b.utilization - a.utilization);
   };
 
-  // Calculate role utilization across all periods
+  // Calculate role utilization for the selected period
   const calculateRoleUtilization = () => {
     const roleData = {};
 
@@ -317,73 +611,47 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
         };
       }
 
-      roleData[role].totalChargeable += employee.totalChargeable;
-      roleData[role].totalAvailable += employee.totalAvailable;
-      roleData[role].employeeCount += 1;
-    });
-
-    return Object.values(roleData).map((role) => ({
-      ...role,
-      utilization:
-        role.totalAvailable > 0
-          ? (role.totalChargeable / role.totalAvailable) * 100
-          : 0,
-      utilizationStatus: getUtilizationStatus(
-        role.totalAvailable > 0
-          ? (role.totalChargeable / role.totalAvailable) * 100
-          : 0
-      ),
-    }));
-  };
-
-  // Calculate team-role utilization matrix
-  const calculateTeamRoleMatrix = () => {
-    const matrix = {};
-
-    teams.forEach((team) => {
-      matrix[team] = {};
-      roles.forEach((role) => {
-        matrix[team][role] = {
-          totalChargeable: 0,
-          totalAvailable: 0,
-          employeeCount: 0,
-          utilization: 0,
-        };
-      });
-    });
-
-    filteredData.forEach((employee) => {
-      if (matrix[employee.team] && matrix[employee.team][employee.role]) {
-        matrix[employee.team][employee.role].totalChargeable +=
-          employee.totalChargeable;
-        matrix[employee.team][employee.role].totalAvailable +=
-          employee.totalAvailable;
-        matrix[employee.team][employee.role].employeeCount += 1;
+      if (selectedPeriod) {
+        // For a specific period
+        const periodData = employee.periods.find(
+          (p) => p.period === selectedPeriod
+        );
+        if (periodData) {
+          roleData[role].totalChargeable += periodData.chargeable;
+          roleData[role].totalAvailable += periodData.total;
+          roleData[role].employeeCount += 1;
+        }
+      } else {
+        // For all periods (total)
+        roleData[role].totalChargeable += employee.totalChargeable;
+        roleData[role].totalAvailable += employee.totalAvailable;
+        roleData[role].employeeCount += 1;
       }
     });
 
-    // Calculate utilization rates
-    Object.keys(matrix).forEach((team) => {
-      Object.keys(matrix[team]).forEach((role) => {
-        const data = matrix[team][role];
-        data.utilization =
-          data.totalAvailable > 0
-            ? (data.totalChargeable / data.totalAvailable) * 100
-            : 0;
-        data.utilizationStatus = getUtilizationStatus(data.utilization);
-      });
-    });
-
-    return matrix;
+    return Object.values(roleData)
+      .map((role) => ({
+        ...role,
+        utilization:
+          role.totalAvailable > 0
+            ? (role.totalChargeable / role.totalAvailable) * 100
+            : 0,
+        utilizationStatus: getUtilizationStatus(
+          role.totalAvailable > 0
+            ? (role.totalChargeable / role.totalAvailable) * 100
+            : 0
+        ),
+      }))
+      .sort((a, b) => b.utilization - a.utilization);
   };
 
   // Prepare trend data across all periods
   const prepareTeamUtilizationTrendData = () => {
     const trendData = [];
-    const overallTrend = [];
 
-    // Calculate overall utilization per period
-    for (let period = 1; period <= 11; period++) {
+    // For each period
+    periods.forEach((period) => {
+      // Calculate overall utilization for this period
       let totalChargeable = 0;
       let totalAvailable = 0;
 
@@ -395,71 +663,184 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
         }
       });
 
-      overallTrend.push({
-        period,
-        utilization:
-          totalAvailable > 0 ? (totalChargeable / totalAvailable) * 100 : 0,
-      });
-    }
+      const periodUtil =
+        totalAvailable > 0 ? (totalChargeable / totalAvailable) * 100 : 0;
 
-    // For each period
-    for (let period = 1; period <= 11; period++) {
+      // Prepare data point for this period
       const periodData = {
-        period: `P${period}`,
-        overall: overallTrend[period - 1].utilization,
+        period,
+        overall: periodUtil,
       };
 
-      // Calculate utilization for each team
+      // Calculate utilization for each team in this period
       teams.forEach((team) => {
         const teamEmployees = filteredData.filter((emp) => emp.team === team);
-        let totalChargeable = 0;
-        let totalAvailable = 0;
+        let teamChargeable = 0;
+        let teamAvailable = 0;
 
         teamEmployees.forEach((employee) => {
           const empPeriodData = employee.periods.find(
             (p) => p.period === period
           );
           if (empPeriodData) {
-            totalChargeable += empPeriodData.chargeable;
-            totalAvailable += empPeriodData.total;
+            teamChargeable += empPeriodData.chargeable;
+            teamAvailable += empPeriodData.total;
           }
         });
 
         periodData[team] =
-          totalAvailable > 0 ? (totalChargeable / totalAvailable) * 100 : 0;
+          teamAvailable > 0 ? (teamChargeable / teamAvailable) * 100 : 0;
       });
 
       trendData.push(periodData);
-    }
+    });
 
     return trendData;
   };
 
-  // Prepare individual employee data
-  const prepareEmployeeUtilizationData = () => {
-    return filteredData
-      .map((employee) => {
-        return {
-          name: employee.name,
-          team: employee.team,
-          role: employee.role,
-          utilization: employee.averageUtilization,
-          utilizationStatus: getUtilizationStatus(employee.averageUtilization),
-          totalChargeable: employee.totalChargeable,
-          totalAvailable: employee.totalAvailable,
-        };
-      })
-      .sort((a, b) => b.utilization - a.utilization);
+  // Calculate time breakdown by category (chargeable, vacation, LOA, etc.)
+  const calculateTimeBreakdown = () => {
+    let totalChargeable = 0;
+    let totalVacation = 0;
+    let totalLOA = 0;
+    let totalResNoJC = 0;
+    let totalResWithJC = 0;
+    let totalSellOn = 0;
+    let totalFormation = 0;
+    let totalTime = 0;
+
+    filteredData.forEach((employee) => {
+      if (selectedPeriod) {
+        // For specific period
+        const periodData = employee.periods.find(
+          (p) => p.period === selectedPeriod
+        );
+        if (periodData) {
+          totalChargeable += periodData.chargeable;
+          totalVacation += periodData.vacation;
+          totalLOA += periodData.loa;
+          totalResNoJC += periodData.resNoJC;
+          totalResWithJC += periodData.resWithJC;
+          totalSellOn += periodData.sellOn;
+          totalFormation += periodData.formation;
+          totalTime += periodData.total;
+        }
+      } else {
+        // For all periods
+        totalChargeable += employee.totalChargeable;
+        totalVacation += employee.totalVacation;
+        totalLOA += employee.totalLOA;
+        totalResNoJC += employee.totalResNoJC;
+        totalResWithJC += employee.totalResWithJC;
+        totalSellOn += employee.totalSellOn;
+        totalFormation += employee.totalFormation;
+        totalTime += employee.totalAvailable;
+      }
+    });
+
+    return [
+      {
+        name: "Chargeable",
+        value: totalChargeable,
+        percentage: totalTime > 0 ? (totalChargeable / totalTime) * 100 : 0,
+        fill: theme.palette.success.main,
+      },
+      {
+        name: "Vacation",
+        value: totalVacation,
+        percentage: totalTime > 0 ? (totalVacation / totalTime) * 100 : 0,
+        fill: theme.palette.info.main,
+      },
+      {
+        name: "Leave of Absence",
+        value: totalLOA,
+        percentage: totalTime > 0 ? (totalLOA / totalTime) * 100 : 0,
+        fill: theme.palette.warning.main,
+      },
+      {
+        name: "Reservation (no JC)",
+        value: totalResNoJC,
+        percentage: totalTime > 0 ? (totalResNoJC / totalTime) * 100 : 0,
+        fill: theme.palette.secondary.main,
+      },
+      {
+        name: "Reservation (with JC)",
+        value: totalResWithJC,
+        percentage: totalTime > 0 ? (totalResWithJC / totalTime) * 100 : 0,
+        fill: theme.palette.primary.main,
+      },
+      {
+        name: "Sell-on",
+        value: totalSellOn,
+        percentage: totalTime > 0 ? (totalSellOn / totalTime) * 100 : 0,
+        fill: theme.palette.error.light,
+      },
+      {
+        name: "Formation",
+        value: totalFormation,
+        percentage: totalTime > 0 ? (totalFormation / totalTime) * 100 : 0,
+        fill: theme.palette.error.dark,
+      },
+    ]
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value);
   };
 
-  // Calculate overall utilization
+  // Prepare data for stacked area chart
+  const prepareTimeStackedData = () => {
+    return periods.map((period) => {
+      const periodData = { period };
+      
+      // Initialize all categories with zero
+      periodData.Chargeable = 0;
+      periodData.Vacation = 0;
+      periodData.LOA = 0;
+      periodData.ResNoJC = 0;
+      periodData.ResWithJC = 0;
+      periodData.SellOn = 0;
+      periodData.Formation = 0;
+      
+      // Sum up values for this period
+      filteredData.forEach(employee => {
+        const empPeriod = employee.periods.find(p => p.period === period);
+        if (empPeriod) {
+          periodData.Chargeable += empPeriod.chargeable || 0;
+          periodData.Vacation += empPeriod.vacation || 0;
+          periodData.LOA += empPeriod.loa || 0;
+          periodData.ResNoJC += empPeriod.resNoJC || 0;
+          periodData.ResWithJC += empPeriod.resWithJC || 0;
+          periodData.SellOn += empPeriod.sellOn || 0;
+          periodData.Formation += empPeriod.formation || 0;
+        }
+      });
+      
+      return periodData;
+    });
+  };
+
+  // Calculate overall utilization based on selected filters
   const calculateOverallUtilization = () => {
     let totalChargeable = 0;
     let totalAvailable = 0;
+    let employeeCount = 0;
 
     filteredData.forEach((employee) => {
-      totalChargeable += employee.totalChargeable;
-      totalAvailable += employee.totalAvailable;
+      if (selectedPeriod) {
+        // For specific period
+        const periodData = employee.periods.find(
+          (p) => p.period === selectedPeriod
+        );
+        if (periodData) {
+          totalChargeable += periodData.chargeable;
+          totalAvailable += periodData.total;
+          employeeCount += 1;
+        }
+      } else {
+        // For all periods
+        totalChargeable += employee.totalChargeable;
+        totalAvailable += employee.totalAvailable;
+        employeeCount += 1;
+      }
     });
 
     const utilization =
@@ -469,12 +850,12 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
       utilization,
       totalChargeable,
       totalAvailable,
-      employeeCount: filteredData.length,
+      employeeCount,
       status: getUtilizationStatus(utilization),
     };
   };
 
-  // Get status distribution
+  // Get utilization status distribution
   const getUtilizationStatusDistribution = () => {
     const statusCounts = {
       "very-good": 0,
@@ -484,15 +865,31 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     };
 
     filteredData.forEach((employee) => {
-      const status = getUtilizationStatus(employee.averageUtilization);
+      let utilization;
+
+      if (selectedPeriod) {
+        // Get utilization for the selected period
+        const periodData = employee.periods.find(
+          (p) => p.period === selectedPeriod
+        );
+        utilization = periodData ? periodData.utilization : 0;
+      } else {
+        // Use average utilization across all periods
+        utilization = employee.averageUtilization;
+      }
+
+      const status = getUtilizationStatus(utilization);
       statusCounts[status] += 1;
     });
 
-    return Object.entries(statusCounts).map(([status, count]) => ({
-      name: getUtilizationLabel(status),
-      value: count,
-      status,
-    }));
+    return Object.entries(statusCounts)
+      .filter(([_, count]) => count > 0)
+      .map(([status, count]) => ({
+        name: getUtilizationLabel(status),
+        value: count,
+        status,
+        fill: getUtilizationColor(theme, status),
+      }));
   };
 
   // Custom tooltip for utilization rate charts
@@ -527,24 +924,35 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     return null;
   };
 
-  // Calculate empty and total capacity
-  const calculateCapacity = () => {
-    let totalCapacity = 0;
-    let unusedCapacity = 0;
-
-    filteredData.forEach((employee) => {
-      totalCapacity += employee.totalAvailable;
-      unusedCapacity += employee.totalAvailable - employee.totalChargeable;
-    });
-
-    const unusedPercentage =
-      totalCapacity > 0 ? (unusedCapacity / totalCapacity) * 100 : 0;
-
-    return {
-      total: totalCapacity,
-      unused: unusedCapacity,
-      unusedPercentage,
-    };
+  const TimeBreakdownTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <Card
+          sx={{
+            p: 1.5,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600}>
+            {payload[0].name}
+          </Typography>
+          {payload.map((entry, index) => (
+            <Typography 
+              key={`item-${index}`} 
+              variant="body2" 
+              sx={{ color: entry.color, mt: 1 }}
+            >
+              {`${entry.name}: ${entry.value.toFixed(1)} hours`}
+            </Typography>
+          ))}
+        </Card>
+      );
+    }
+    return null;
   };
 
   // Get the color based on utilization status
@@ -553,7 +961,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     return getUtilizationColor(theme, status);
   };
 
-  if (loading || staffingData.length === 0) {
+  if (loading) {
     return (
       <Box
         sx={{
@@ -568,35 +976,64 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     );
   }
 
+  if (error) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "400px",
+          p: 3,
+        }}
+      >
+        <Alert severity="error" sx={{ mb: 2, width: "100%" }}>
+          {error}
+        </Alert>
+        <Typography variant="body1" align="center">
+          There was an error processing the staffing data. Please check your
+          Excel file format and try again.
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (!dataLoaded || staffingData.length === 0) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "400px",
+          p: 3,
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          No staffing data available
+        </Typography>
+        <Typography variant="body1" align="center">
+          Please upload a staffing file to view staffing analytics.
+        </Typography>
+      </Box>
+    );
+  }
+
   // Prepare data based on current selections
   const teamUtilizationData = calculateTeamUtilization();
   const roleUtilizationData = calculateRoleUtilization();
-  const teamRoleMatrix = calculateTeamRoleMatrix();
   const teamUtilizationTrend = prepareTeamUtilizationTrendData();
-  const employeeUtilizationData = prepareEmployeeUtilizationData();
+  const timeBreakdownData = calculateTimeBreakdown();
+  const timeStackedData = prepareTimeStackedData();
   const overallUtilization = calculateOverallUtilization();
   const utilizationDistribution = getUtilizationStatusDistribution();
-  const capacityData = calculateCapacity();
 
   // Calculate color for overall utilization
   const overallUtilizationColor = getStatusColor(
     overallUtilization.utilization
   );
-
-  // Generate team colors for charts
-  const teamColors = {};
-  teams.forEach((team, index) => {
-    const colorKeys = [
-      "primary",
-      "secondary",
-      "success",
-      "info",
-      "warning",
-      "error",
-    ];
-    const colorKey = colorKeys[index % colorKeys.length];
-    teamColors[team] = theme.palette[colorKey].main;
-  });
 
   return (
     <Fade in={!loading} timeout={500}>
@@ -626,7 +1063,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
               }}
             >
               {/* Team Filter */}
-              <FormControl sx={{ minWidth: 200 }}>
+              <FormControl sx={{ minWidth: 150 }}>
                 <InputLabel id="team-filter-label">Team</InputLabel>
                 <Select
                   labelId="team-filter-label"
@@ -645,7 +1082,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
               </FormControl>
 
               {/* Role Filter */}
-              <FormControl sx={{ minWidth: 200 }}>
+              <FormControl sx={{ minWidth: 150 }}>
                 <InputLabel id="role-filter-label">Role</InputLabel>
                 <Select
                   labelId="role-filter-label"
@@ -663,48 +1100,42 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 </Select>
               </FormControl>
 
+              {/* Period Filter */}
+              <FormControl sx={{ minWidth: 150 }}>
+                <InputLabel id="period-filter-label">Period</InputLabel>
+                <Select
+                  labelId="period-filter-label"
+                  id="period-filter"
+                  value={selectedPeriod}
+                  label="Period"
+                  onChange={handlePeriodChange}
+                >
+                  <MenuItem value="">All Periods</MenuItem>
+                  {periods.map((period) => (
+                    <MenuItem key={period} value={period}>
+                      {period}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
               {/* Employee Filter */}
               <Autocomplete
                 id="employee-filter"
                 options={employeeOptions}
                 getOptionLabel={(option) => `${option.name} (${option.team})`}
-                sx={{ minWidth: 300 }}
+                sx={{ minWidth: 250 }}
                 value={selectedEmployee}
                 onChange={handleEmployeeChange}
                 renderInput={(params) => (
                   <TextField {...params} label="Employee" />
                 )}
               />
-
-              {/* View Mode Toggle */}
-              <ToggleButtonGroup
-                value={viewMode}
-                exclusive
-                onChange={handleViewModeChange}
-                aria-label="view mode"
-                sx={{ ml: "auto" }}
-              >
-                <ToggleButton value="team" aria-label="team view">
-                  <Tooltip title="Team View">
-                    <GroupWorkIcon />
-                  </Tooltip>
-                </ToggleButton>
-                <ToggleButton value="employee" aria-label="employee view">
-                  <Tooltip title="Employee View">
-                    <PersonIcon />
-                  </Tooltip>
-                </ToggleButton>
-                <ToggleButton value="role" aria-label="role view">
-                  <Tooltip title="Role View">
-                    <WorkIcon />
-                  </Tooltip>
-                </ToggleButton>
-              </ToggleButtonGroup>
             </Box>
           </Paper>
         </Grid>
 
-        {/* Overall Utilization KPIs */}
+        {/* Top Row: KPIs */}
         <Grid item xs={12} md={3}>
           <Card
             sx={{
@@ -726,6 +1157,14 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 gutterBottom
               >
                 Overall Utilization
+                {selectedPeriod && (
+                  <Chip
+                    label={`Period: ${selectedPeriod}`}
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 1 }}
+                  />
+                )}
               </Typography>
               <Divider sx={{ my: 2 }} />
               <Box sx={{ textAlign: "center", mt: 3, mb: 2 }}>
@@ -782,76 +1221,8 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
           </Card>
         </Grid>
 
-        {/* Capacity Analysis */}
-        <Grid item xs={12} md={3}>
-          <Card
-            sx={{
-              height: "100%",
-              borderRadius: 3,
-              boxShadow: 2,
-              transition: "all 0.3s",
-              "&:hover": {
-                boxShadow: 6,
-                transform: "translateY(-4px)",
-              },
-            }}
-          >
-            <CardContent sx={{ p: 3 }}>
-              <Typography
-                variant="h6"
-                fontWeight={700}
-                color="text.primary"
-                gutterBottom
-              >
-                Capacity Analysis
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ textAlign: "center", mt: 3, mb: 2 }}>
-                <Typography
-                  variant="h3"
-                  component="div"
-                  fontWeight={700}
-                  color={theme.palette.secondary.main}
-                >
-                  {capacityData.unusedPercentage.toFixed(1)}%
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Unused Capacity
-                </Typography>
-              </Box>
-              <Divider sx={{ my: 2 }} />
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Available Hours
-                  </Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    {capacityData.total.toFixed(1)} hours
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Unused Hours
-                  </Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    {capacityData.unused.toFixed(1)} hours
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">
-                    Equivalent FTE
-                  </Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    {(capacityData.unused / 80).toFixed(1)} FTE
-                  </Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Utilization Distribution */}
-        <Grid item xs={12} md={6}>
+        {/* Utilization Distribution - Pie Chart */}
+        <Grid item xs={12} md={4}>
           <Card
             sx={{
               height: "100%",
@@ -874,31 +1245,102 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 Utilization Distribution
               </Typography>
               <Divider sx={{ my: 2 }} />
-              <Box sx={{ height: 250 }}>
+              <Box sx={{ height: 230 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={utilizationDistribution}
+                  <RadialBarChart 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius="20%" 
+                    outerRadius="90%" 
+                    barSize={20} 
+                    data={utilizationDistribution}
+                  >
+                    <RadialBar
+                      minAngle={15}
+                      background
+                      clockWise
                       dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      label={({ name, percent }) =>
-                        `${name}: ${(percent * 100).toFixed(0)}%`
-                      }
-                    >
-                      {utilizationDistribution.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={getUtilizationColor(theme, entry.status)}
-                        />
-                      ))}
-                    </Pie>
+                      cornerRadius={10}
+                      label={{
+                        position: 'insideStart',
+                        fill: '#fff',
+                        formatter: (value, entry) => `${entry.name}: ${value}`,
+                      }}
+                    />
+                    <Legend 
+                      iconSize={10} 
+                      layout="vertical" 
+                      verticalAlign="middle" 
+                      wrapperStyle={{ 
+                        right: 0, 
+                        top: '50%', 
+                        transform: 'translate(0, -50%)',
+                        lineHeight: '24px'
+                      }}
+                      formatter={(value) => <span style={{ color: '#666' }}>{value}</span>}
+                    />
                     <RechartsTooltip
                       formatter={(value, name) => [`${value} employees`, name]}
                     />
-                    <Legend />
+                  </RadialBarChart>
+                </ResponsiveContainer>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Time Breakdown - Improved Pie Chart */}
+        <Grid item xs={12} md={5}>
+          <Card
+            sx={{
+              height: "100%",
+              borderRadius: 3,
+              boxShadow: 2,
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                color="text.primary"
+                gutterBottom
+              >
+                Time Allocation
+                {selectedPeriod && (
+                  <Chip
+                    label={`Period: ${selectedPeriod}`}
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 1 }}
+                  />
+                )}
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ height: 230 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      activeIndex={pieChartActiveIndex}
+                      activeShape={renderActiveShape}
+                      data={timeBreakdownData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={70}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                      onMouseEnter={onPieEnter}
+                    >
+                      {timeBreakdownData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
                   </PieChart>
                 </ResponsiveContainer>
               </Box>
@@ -906,145 +1348,45 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
           </Card>
         </Grid>
 
-        {/* Team Utilization Trend Chart */}
-        <Grid item xs={12}>
-          <Paper
-            elevation={2}
+        {/* Middle Row: Team & Role Utilization */}
+        <Grid item xs={12} md={6}>
+          <Card
             sx={{
-              p: 3,
-              height: 400,
+              height: "100%",
               borderRadius: 3,
-              border: "1px solid",
-              borderColor: "divider",
-              mb: 3,
+              boxShadow: 2,
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+              pt: 2,
             }}
           >
-            <Typography variant="h6" fontWeight={600} gutterBottom>
-              Team Utilization Trend
-            </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Team utilization across all periods with overall trend
-            </Typography>
-            <ResponsiveContainer width="100%" height="85%">
-              <LineChart
-                data={teamUtilizationTrend}
-                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            <CardContent sx={{ p: 3 }}>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                color="text.primary"
+                gutterBottom
               >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="period" />
-                <YAxis
-                  domain={[0, 100]}
-                  tickFormatter={(value) => `${value}%`}
-                />
-                <RechartsTooltip
-                  formatter={(value) => `${value.toFixed(1)}%`}
-                />
-                <Legend />
-
-                {/* Show overall trend as a bold line */}
-                <Line
-                  type="monotone"
-                  dataKey="overall"
-                  name="Overall"
-                  stroke={theme.palette.grey[800]}
-                  strokeWidth={3}
-                  dot={{ r: 4, strokeWidth: 2 }}
-                  activeDot={{ r: 8 }}
-                />
-
-                {/* Show each team as a dotted line */}
-                {teams.map((team, index) => (
-                  <Line
-                    key={team}
-                    type="monotone"
-                    dataKey={team}
-                    name={team}
-                    stroke={teamColors[team]}
-                    strokeDasharray="5 5"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-
-        {viewMode === "team" && (
-          <Grid item xs={12} md={6}>
-            <Paper
-              elevation={2}
-              sx={{
-                p: 3,
-                height: 400,
-                borderRadius: 3,
-                border: "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <Typography variant="h6" fontWeight={600} gutterBottom>
                 Team Utilization
+                {selectedPeriod && (
+                  <Chip
+                    label={`Period: ${selectedPeriod}`}
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 1 }}
+                  />
+                )}
               </Typography>
-              <ResponsiveContainer width="100%" height="90%">
-                <BarChart
-                  data={teamUtilizationData}
-                  layout="vertical"
-                  margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    horizontal={true}
-                    vertical={false}
-                  />
-                  <XAxis
-                    type="number"
-                    domain={[0, 100]}
-                    tickFormatter={(value) => `${value}%`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{ fontSize: 12 }}
-                  />
-                  <RechartsTooltip content={<UtilizationTooltip />} />
-                  <Bar dataKey="utilization" name="Utilization Rate">
-                    {teamUtilizationData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={getUtilizationColor(
-                          theme,
-                          entry.utilizationStatus
-                        )}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Paper>
-          </Grid>
-        )}
-
-        {viewMode === "role" && (
-          <>
-            <Grid item xs={12} md={6}>
-              <Paper
-                elevation={2}
-                sx={{
-                  p: 3,
-                  height: 400,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                }}
-              >
-                <Typography variant="h6" fontWeight={600} gutterBottom>
-                  Role Utilization
-                </Typography>
-                <ResponsiveContainer width="100%" height="90%">
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={roleUtilizationData}
+                    data={teamUtilizationData}
                     layout="vertical"
-                    margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                    margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
                   >
                     <CartesianGrid
                       strokeDasharray="3 3"
@@ -1062,7 +1404,96 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                       tick={{ fontSize: 12 }}
                     />
                     <RechartsTooltip content={<UtilizationTooltip />} />
-                    <Bar dataKey="utilization" name="Utilization Rate">
+                    <Bar 
+                      dataKey="utilization" 
+                      name="Utilization Rate"
+                      isAnimationActive={true}
+                      animationBegin={0}
+                      animationDuration={1000}
+                      barSize={20}
+                      radius={[0, 8, 8, 0]}
+                    >
+                      {teamUtilizationData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={getUtilizationColor(
+                            theme,
+                            entry.utilizationStatus
+                          )}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card
+            sx={{
+              height: "100%",
+              borderRadius: 3,
+              boxShadow: 2,
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+              pt: 2,
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                color="text.primary"
+                gutterBottom
+              >
+                Role Utilization
+                {selectedPeriod && (
+                  <Chip
+                    label={`Period: ${selectedPeriod}`}
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 1 }}
+                  />
+                )}
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={roleUtilizationData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      horizontal={true}
+                      vertical={false}
+                    />
+                    <XAxis
+                      type="number"
+                      domain={[0, 100]}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fontSize: 12 }}
+                    />
+                    <RechartsTooltip content={<UtilizationTooltip />} />
+                    <Bar 
+                      dataKey="utilization" 
+                      name="Utilization Rate"
+                      isAnimationActive={true}
+                      animationBegin={0}
+                      animationDuration={1000}
+                      barSize={20}
+                      radius={[0, 8, 8, 0]}
+                    >
                       {roleUtilizationData.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
@@ -1075,113 +1506,166 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              </Paper>
-            </Grid>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
 
-            <Grid item xs={12}>
-              <Paper
-                elevation={2}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                }}
-              >
-                <Typography variant="h6" fontWeight={600} gutterBottom>
-                  Team-Role Utilization Matrix
-                </Typography>
-                <TableContainer>
-                  <Table aria-label="team-role matrix">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Team / Role</TableCell>
-                        {roles.map((role) => (
-                          <TableCell key={role} align="center">
-                            {role}
-                          </TableCell>
-                        ))}
-                        <TableCell align="center">Overall</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {teams.map((team) => {
-                        // Calculate overall team utilization
-                        const teamEmployees = filteredData.filter(
-                          (emp) => emp.team === team
-                        );
-                        let totalChargeable = 0;
-                        let totalAvailable = 0;
+        {/* Bottom Row: Trends */}
+        <Grid item xs={12} md={6}>
+          <Card
+            sx={{
+              height: "100%",
+              borderRadius: 3,
+              boxShadow: 2,
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h6" fontWeight={700} gutterBottom>
+                Team Utilization Trend
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ height: 350 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={teamUtilizationTrend}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis
+                      domain={[0, 100]}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <RechartsTooltip
+                      formatter={(value) => `${value.toFixed(1)}%`}
+                    />
+                    <Legend />
 
-                        teamEmployees.forEach((employee) => {
-                          totalChargeable += employee.totalChargeable;
-                          totalAvailable += employee.totalAvailable;
-                        });
+                    {/* Show overall trend as a bold line */}
+                    <Line
+                      type="monotone"
+                      dataKey="overall"
+                      name="Overall"
+                      stroke={theme.palette.grey[800]}
+                      strokeWidth={3}
+                      dot={{ r: 4, strokeWidth: 2 }}
+                      activeDot={{ r: 8 }}
+                    />
 
-                        const teamUtilization =
-                          totalAvailable > 0
-                            ? (totalChargeable / totalAvailable) * 100
-                            : 0;
+                    {/* Show each team as a dotted line */}
+                    {teams.slice(0, 5).map((team, index) => (
+                      <Line
+                        key={team}
+                        type="monotone"
+                        dataKey={team}
+                        name={team}
+                        stroke={
+                          COLORS[index % COLORS.length] ||
+                          theme.palette.primary.main
+                        }
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
 
-                        const teamStatus =
-                          getUtilizationStatus(teamUtilization);
+        <Grid item xs={12} md={6}>
+          <Card
+            sx={{
+              height: "100%",
+              borderRadius: 3,
+              boxShadow: 2,
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: 6,
+                transform: "translateY(-4px)",
+              },
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h6" fontWeight={700} gutterBottom>
+                Time Allocation Trend
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ height: 350 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={timeStackedData}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis />
+                    <RechartsTooltip content={<TimeBreakdownTooltip />} />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="Chargeable"
+                      stackId="1"
+                      stroke={theme.palette.success.main}
+                      fill={theme.palette.success.main}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Vacation"
+                      stackId="1"
+                      stroke={theme.palette.info.main}
+                      fill={theme.palette.info.main}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="LOA"
+                      stackId="1"
+                      stroke={theme.palette.warning.main}
+                      fill={theme.palette.warning.main}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="ResNoJC"
+                      stackId="1"
+                      stroke={theme.palette.secondary.main}
+                      fill={theme.palette.secondary.main}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="ResWithJC"
+                      stackId="1"
+                      stroke={theme.palette.primary.main}
+                      fill={theme.palette.primary.main}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="SellOn"
+                      stackId="1"
+                      stroke={theme.palette.error.light}
+                      fill={theme.palette.error.light}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Formation"
+                      stackId="1"
+                      stroke={theme.palette.error.dark}
+                      fill={theme.palette.error.dark}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
 
-                        return (
-                          <TableRow key={team}>
-                            <TableCell component="th" scope="row">
-                              <Typography fontWeight={600}>{team}</Typography>
-                            </TableCell>
-                            {roles.map((role) => {
-                              const data = teamRoleMatrix[team][role];
-                              return (
-                                <TableCell
-                                  key={`${team}-${role}`}
-                                  align="center"
-                                  sx={{
-                                    color:
-                                      data.employeeCount > 0
-                                        ? getUtilizationColor(
-                                            theme,
-                                            data.utilizationStatus
-                                          )
-                                        : "text.disabled",
-                                    fontWeight:
-                                      data.employeeCount > 0 ? 600 : 400,
-                                  }}
-                                >
-                                  {data.employeeCount > 0
-                                    ? `${data.utilization.toFixed(1)}% (${
-                                        data.employeeCount
-                                      })`
-                                    : "-"}
-                                </TableCell>
-                              );
-                            })}
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color: getUtilizationColor(theme, teamStatus),
-                                fontWeight: 600,
-                                bgcolor: alpha(
-                                  getUtilizationColor(theme, teamStatus),
-                                  0.1
-                                ),
-                              }}
-                            >
-                              {teamUtilization.toFixed(1)}%
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            </Grid>
-          </>
-        )}
-
-        {/* Employee Table (always show) */}
+        {/* Employee Table */}
         <Grid item xs={12}>
           <Paper
             elevation={2}
@@ -1201,7 +1685,15 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
               }}
             >
               <Typography variant="h6" fontWeight={600}>
-                Employee Utilization Details
+                Employee Details
+                {selectedPeriod && (
+                  <Chip
+                    label={`Period: ${selectedPeriod}`}
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 1 }}
+                  />
+                )}
               </Typography>
             </Box>
             <TableContainer>
@@ -1247,6 +1739,8 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                         Role
                       </TableSortLabel>
                     </TableCell>
+                    <TableCell>Arrival Date</TableCell>
+                    <TableCell>Departure Date</TableCell>
                     <TableCell align="right">
                       <TableSortLabel
                         active={sortConfig.key === "averageUtilization"}
@@ -1257,7 +1751,7 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                         }
                         onClick={() => handleSort("averageUtilization")}
                       >
-                        Utilization Rate
+                        Utilization
                       </TableSortLabel>
                     </TableCell>
                     <TableCell align="right">Chargeable Hours</TableCell>
@@ -1267,9 +1761,24 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 </TableHead>
                 <TableBody>
                   {sortedData.map((employee) => {
-                    const status = getUtilizationStatus(
-                      employee.averageUtilization
-                    );
+                    let utilization, chargeable, available;
+
+                    if (selectedPeriod) {
+                      // Get data for selected period
+                      const periodData = employee.periods.find(
+                        (p) => p.period === selectedPeriod
+                      );
+                      utilization = periodData ? periodData.utilization : 0;
+                      chargeable = periodData ? periodData.chargeable : 0;
+                      available = periodData ? periodData.total : 0;
+                    } else {
+                      // Use average across all periods
+                      utilization = employee.averageUtilization;
+                      chargeable = employee.totalChargeable;
+                      available = employee.totalAvailable;
+                    }
+
+                    const status = getUtilizationStatus(utilization);
 
                     return (
                       <TableRow
@@ -1284,6 +1793,12 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                         </TableCell>
                         <TableCell>{employee.team}</TableCell>
                         <TableCell>{employee.role}</TableCell>
+                        <TableCell>
+                          {formatDate(employee.arrivalDate)}
+                        </TableCell>
+                        <TableCell>
+                          {formatDate(employee.departureDate)}
+                        </TableCell>
                         <TableCell
                           align="right"
                           sx={{
@@ -1291,13 +1806,13 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                             fontWeight: 600,
                           }}
                         >
-                          {employee.averageUtilization.toFixed(1)}%
+                          {utilization.toFixed(1)}%
                         </TableCell>
                         <TableCell align="right">
-                          {employee.totalChargeable.toFixed(1)}
+                          {chargeable.toFixed(1)}
                         </TableCell>
                         <TableCell align="right">
-                          {employee.totalAvailable.toFixed(1)}
+                          {available.toFixed(1)}
                         </TableCell>
                         <TableCell align="right">
                           <Chip
@@ -1326,5 +1841,21 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
     </Fade>
   );
 };
+
+// Define chart colors
+const COLORS = [
+  "#0088FE",
+  "#00C49F",
+  "#FFBB28",
+  "#FF8042",
+  "#8884d8",
+  "#4CAF50",
+  "#FF5722",
+  "#673AB7",
+  "#03A9F4",
+  "#9C27B0",
+  "#E91E63",
+  "#009688",
+];
 
 export default StaffingTab;
