@@ -20,12 +20,16 @@ import {
   TextField,
   Autocomplete,
   Chip,
+  Grid,
 } from "@mui/material";
 import { alpha, darken, lighten } from "@mui/material/styles";
 import ClearIcon from "@mui/icons-material/Clear";
+import BusinessIcon from "@mui/icons-material/Business";
+import PeopleIcon from "@mui/icons-material/People";
 import PipelineTab from "./components/PipelineTab";
 import BookingsTab from "./components/BookingsTab";
 import ServiceLinesTab from "./components/ServiceLinesTab";
+import StaffingTab from "./components/StaffingTab";
 import FilterPanel from "./components/FilterPanel";
 import FileUploader from "./components/FileUploader";
 import { processExcelData, getUniqueValues } from "./utils/dataUtils";
@@ -38,7 +42,8 @@ const RIGHT_DRAWER_WIDTH = 240;
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
-  const [data, setData] = useState([]);
+  const [opportunityData, setOpportunityData] = useState([]);
+  const [staffingData, setStaffingData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [filters, setFilters] = useState({
     subSegmentCodes: [],
@@ -56,7 +61,13 @@ function App() {
     message: "",
     severity: "info",
   });
-  const [currentFile, setCurrentFile] = useState(null);
+  const [currentFiles, setCurrentFiles] = useState({
+    opportunity: null,
+    staffing: null,
+  });
+
+  // Store the actual file data for the staffing file
+  const [staffingFileData, setStaffingFileData] = useState(null);
   const [filterOptions, setFilterOptions] = useState({
     subSegmentCodes: [],
     subSegments: [],
@@ -72,62 +83,85 @@ function App() {
 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
-  const handleFileUploaded = async (fileName, fileData) => {
+  const handleFileUploaded = async (fileName, fileData, fileType) => {
     try {
       setLoading(true);
-      setCurrentFile(fileName);
 
-      // Process the uploaded Excel file
-      const processedData = await processExcelData(fileData);
+      // Update current file state based on file type
+      setCurrentFiles((prev) => ({
+        ...prev,
+        [fileType]: fileName,
+      }));
 
-      // Ensure processedData is an array
-      const safeProcessedData = Array.isArray(processedData)
-        ? processedData
-        : [];
+      // Store file data for future use by components
+      if (fileType === "staffing") {
+        // For staffing file, store the raw data directly in state
+        setStaffingFileData(fileData);
+        console.log(`Staffing file ${fileName} data stored in memory`);
 
-      setData(safeProcessedData);
-      setFilteredData(safeProcessedData);
+        setNotification({
+          open: true,
+          message: `Successfully loaded staffing data from ${fileName}`,
+          severity: "success",
+        });
+      } else if (fileType === "opportunity") {
+        // Process the uploaded Opportunity Excel file
+        const processedData = await processExcelData(fileData);
 
-      // Create mapping of segment codes to sub segments with proper error checking
-      const segmentMapping = {};
+        // Ensure processedData is an array
+        const safeProcessedData = Array.isArray(processedData)
+          ? processedData
+          : [];
 
-      safeProcessedData.forEach((item) => {
-        const code = item?.["Sub Segment Code"];
-        const subSegment = item?.["Sub Segment"];
+        setOpportunityData(safeProcessedData);
+        setFilteredData(safeProcessedData);
 
-        if (code && subSegment) {
-          if (!segmentMapping[code]) {
-            segmentMapping[code] = new Set();
+        // Create mapping of segment codes to sub segments with proper error checking
+        const segmentMapping = {};
+
+        safeProcessedData.forEach((item) => {
+          const code = item?.["Sub Segment Code"];
+          const subSegment = item?.["Sub Segment"];
+
+          if (code && subSegment) {
+            if (!segmentMapping[code]) {
+              segmentMapping[code] = new Set();
+            }
+            segmentMapping[code].add(subSegment);
           }
-          segmentMapping[code].add(subSegment);
-        }
-      });
+        });
 
-      // Convert sets to arrays
-      Object.keys(segmentMapping).forEach((key) => {
-        segmentMapping[key] = Array.from(segmentMapping[key]);
-      });
+        // Convert sets to arrays
+        Object.keys(segmentMapping).forEach((key) => {
+          segmentMapping[key] = Array.from(segmentMapping[key]);
+        });
 
-      setSegmentToSubSegmentMap(segmentMapping);
+        setSegmentToSubSegmentMap(segmentMapping);
 
-      // Set filter options with proper error checking
-      setFilterOptions({
-        subSegmentCodes: getUniqueValues(safeProcessedData, "Sub Segment Code"),
-        subSegments: getUniqueValues(safeProcessedData, "Sub Segment"),
-        serviceLine1: getUniqueValues(safeProcessedData, "Service Line 1"),
-        accounts: getUniqueValues(safeProcessedData, "Account"),
-      });
+        // Set filter options with proper error checking
+        setFilterOptions({
+          subSegmentCodes: getUniqueValues(
+            safeProcessedData,
+            "Sub Segment Code"
+          ),
+          subSegments: getUniqueValues(safeProcessedData, "Sub Segment"),
+          serviceLine1: getUniqueValues(safeProcessedData, "Service Line 1"),
+          accounts: getUniqueValues(safeProcessedData, "Account"),
+        });
 
-      setNotification({
-        open: true,
-        message: `Successfully loaded ${safeProcessedData.length} opportunities from ${fileName}`,
-        severity: "success",
-      });
+        setNotification({
+          open: true,
+          message: `Successfully loaded ${safeProcessedData.length} opportunities from ${fileName}`,
+          severity: "success",
+        });
+      }
     } catch (error) {
-      console.error("Error processing file:", error);
+      console.error(`Error processing ${fileType} file:`, error);
       setNotification({
         open: true,
-        message: `Error loading file: ${error.message || "Unknown error"}`,
+        message: `Error loading ${fileType} file: ${
+          error.message || "Unknown error"
+        }`,
         severity: "error",
       });
     } finally {
@@ -171,11 +205,10 @@ function App() {
   }, [filters.subSegmentCodes, segmentToSubSegmentMap]);
 
   // Apply filters whenever they change
-  // Apply filters whenever they change
   useEffect(() => {
-    if (!data || data.length === 0) return;
+    if (!opportunityData || opportunityData.length === 0) return;
 
-    let result = [...data];
+    let result = [...opportunityData];
 
     // Defensive checks for filters
     const safeFilters = filters || {};
@@ -226,7 +259,7 @@ function App() {
     if (safeFilters.serviceLine1?.length > 0) {
       // Get all unique service lines in the data
       const allServiceLines = new Set();
-      data.forEach((item) => {
+      opportunityData.forEach((item) => {
         if (item["Service Line 1"]) allServiceLines.add(item["Service Line 1"]);
         if (item["Service Line 2"]) allServiceLines.add(item["Service Line 2"]);
         if (item["Service Line 3"]) allServiceLines.add(item["Service Line 3"]);
@@ -373,7 +406,7 @@ function App() {
     }
 
     setFilteredData(result);
-  }, [filters, data]);
+  }, [filters, opportunityData]);
 
   // Safely handle filter changes
   const handleFilterChange = (newFilters) => {
@@ -455,7 +488,11 @@ function App() {
     } else if (activeTab === 3) {
       // Jobcode Timeline Tab: All data
       return filteredData;
+    } else if (activeTab === 4) {
+      // Staffing Tab: All data (we don't filter staffing data with the same filters)
+      return filteredData;
     }
+    return [];
   };
 
   // Define theme colors for buttons
@@ -469,9 +506,6 @@ function App() {
   };
 
   // Left sidebar content - Sub Segment Code filters
-  // Left sidebar content - Sub Segment Code filters
-  // The updated leftSidebarContent with fixed layout and added divider
-
   const leftSidebarContent = (
     <Box sx={{ p: 3 }}>
       <Typography
@@ -662,7 +696,6 @@ function App() {
   );
 
   // The updated rightSidebarContent with fixed layout to prevent shifting
-
   const rightSidebarContent = (
     <Box sx={{ p: 3 }}>
       <Typography
@@ -777,12 +810,13 @@ function App() {
       </Box>
     </Box>
   );
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: "flex" }}>
         {/* Left Sidebar - Sub Segment Codes */}
-        {data.length > 0 && !isMobile && (
+        {opportunityData.length > 0 && !isMobile && (
           <Drawer
             variant="permanent"
             sx={{
@@ -808,7 +842,7 @@ function App() {
             flexGrow: 1,
             width: {
               sm: `calc(100% - ${
-                data.length > 0 && !isMobile
+                opportunityData.length > 0 && !isMobile
                   ? LEFT_DRAWER_WIDTH + RIGHT_DRAWER_WIDTH
                   : 0
               }px)`,
@@ -876,7 +910,7 @@ function App() {
               </Box>
 
               {/* Center - Tabs */}
-              {data.length > 0 && (
+              {opportunityData.length > 0 && (
                 <Tabs
                   value={activeTab}
                   onChange={handleTabChange}
@@ -979,10 +1013,29 @@ function App() {
                     }
                     iconPosition="start"
                   />
+                  <Tab
+                    label="Staffing"
+                    icon={
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          bgcolor: theme.palette.warning.main,
+                          display: "inline-block",
+                          mr: 1,
+                          verticalAlign: "middle",
+                          mb: 0.5,
+                        }}
+                      />
+                    }
+                    iconPosition="start"
+                    disabled={!currentFiles.staffing}
+                  />
                 </Tabs>
               )}
 
-              {/* Right side - File info & uploader */}
+              {/* Right side - File info & uploaders */}
               <Box
                 sx={{
                   display: "flex",
@@ -991,50 +1044,47 @@ function App() {
                   ml: "auto",
                 }}
               >
-                {currentFile && (
-                  <Box
-                    sx={{
-                      display: { xs: "none", md: "flex" },
-                      alignItems: "center",
-                      px: 2,
-                      py: 0.75,
-                      borderRadius: 2,
-                      backgroundColor: alpha(
-                        theme.palette.background.default,
-                        0.7
-                      ),
-                      border: `1px solid ${alpha(
-                        theme.palette.primary.main,
-                        0.1
-                      )}`,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        mr: 1,
-                        fontWeight: 500,
-                      }}
-                    >
-                      Current file:
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.primary"
-                      sx={{
-                        fontWeight: 600,
-                      }}
-                    >
-                      {currentFile}
-                    </Typography>
-                  </Box>
-                )}
+                {/* Current files chips */}
+                <Box
+                  sx={{
+                    display: { xs: "none", md: "flex" },
+                    flexDirection: "column",
+                    gap: 1,
+                  }}
+                >
+                  {currentFiles.opportunity && (
+                    <Chip
+                      icon={<BusinessIcon />}
+                      label={`Opportunity: ${currentFiles.opportunity}`}
+                      color="primary"
+                      variant="outlined"
+                      size="small"
+                    />
+                  )}
+                  {currentFiles.staffing && (
+                    <Chip
+                      icon={<PeopleIcon />}
+                      label={`Staffing: ${currentFiles.staffing}`}
+                      color="secondary"
+                      variant="outlined"
+                      size="small"
+                    />
+                  )}
+                </Box>
 
-                <FileUploader
-                  onFileUploaded={handleFileUploaded}
-                  hasData={data.length > 0}
-                />
+                {/* File uploaders */}
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <FileUploader
+                    onFileUploaded={handleFileUploaded}
+                    hasData={currentFiles.opportunity !== null}
+                    fileType="opportunity"
+                  />
+                  <FileUploader
+                    onFileUploaded={handleFileUploaded}
+                    hasData={currentFiles.staffing !== null}
+                    fileType="staffing"
+                  />
+                </Box>
               </Box>
             </Toolbar>
           </AppBar>
@@ -1049,7 +1099,7 @@ function App() {
               overflow: "hidden",
             }}
           >
-            {data.length === 0 ? (
+            {opportunityData.length === 0 ? (
               <Fade in={true} timeout={800}>
                 <Paper
                   elevation={2}
@@ -1084,17 +1134,68 @@ function App() {
                     color="text.secondary"
                     sx={{ maxWidth: "600px", mb: 4 }}
                   >
-                    Upload your Excel file containing opportunity data to
-                    visualize pipeline, bookings, and service line performance
-                    with interactive charts and insights.
+                    Upload your Excel files to visualize pipeline, bookings,
+                    service line performance, and team staffing data with
+                    interactive charts and insights.
                   </Typography>
 
-                  <Box sx={{ mt: 2 }}>
-                    <FileUploader
-                      onFileUploaded={handleFileUploaded}
-                      hasData={false}
-                    />
-                  </Box>
+                  <Grid
+                    container
+                    spacing={3}
+                    justifyContent="center"
+                    sx={{ mt: 2 }}
+                  >
+                    <Grid item>
+                      <Paper
+                        elevation={2}
+                        sx={{ p: 3, borderRadius: 2, textAlign: "center" }}
+                      >
+                        <BusinessIcon
+                          sx={{ fontSize: 48, color: "primary.main", mb: 2 }}
+                        />
+                        <Typography variant="h6" gutterBottom>
+                          Opportunity Data
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mb: 2 }}
+                        >
+                          Upload pipeline and bookings data
+                        </Typography>
+                        <FileUploader
+                          onFileUploaded={handleFileUploaded}
+                          hasData={false}
+                          fileType="opportunity"
+                        />
+                      </Paper>
+                    </Grid>
+                    <Grid item>
+                      <Paper
+                        elevation={2}
+                        sx={{ p: 3, borderRadius: 2, textAlign: "center" }}
+                      >
+                        <PeopleIcon
+                          sx={{ fontSize: 48, color: "secondary.main", mb: 2 }}
+                        />
+                        <Typography variant="h6" gutterBottom>
+                          Staffing Data
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mb: 2 }}
+                        >
+                          Upload team utilization data
+                        </Typography>
+                        <FileUploader
+                          onFileUploaded={handleFileUploaded}
+                          hasData={false}
+                          fileType="staffing"
+                        />
+                      </Paper>
+                    </Grid>
+                  </Grid>
                 </Paper>
               </Fade>
             ) : (
@@ -1105,13 +1206,15 @@ function App() {
                   flexDirection: "column",
                 }}
               >
-                <Box sx={{ mb: 3 }}>
-                  <FilterPanel
-                    data={data}
-                    filters={filters}
-                    onFilterChange={handleFilterChange}
-                  />
-                </Box>
+                {activeTab !== 4 && (
+                  <Box sx={{ mb: 3 }}>
+                    <FilterPanel
+                      data={opportunityData}
+                      filters={filters}
+                      onFilterChange={handleFilterChange}
+                    />
+                  </Box>
+                )}
 
                 <Box sx={{ flex: 1, overflow: "auto" }}>
                   {activeTab === 0 && (
@@ -1140,12 +1243,22 @@ function App() {
                   )}
                   {activeTab === 3 && (
                     <JobcodeTimelineTab
-                      data={data} // Note: Using all data, not filtered data from getTabData()
+                      data={opportunityData} // Note: Using all data, not filtered data from getTabData()
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
                     />
                   )}
+                  {activeTab === 4 &&
+                    currentFiles.staffing &&
+                    staffingFileData && (
+                      <StaffingTab
+                        data={opportunityData}
+                        loading={loading}
+                        staffingFileName={currentFiles.staffing}
+                        staffingFileData={staffingFileData}
+                      />
+                    )}
                 </Box>
               </Box>
             )}
@@ -1153,7 +1266,7 @@ function App() {
         </Box>
 
         {/* Right Sidebar - Service Lines */}
-        {data.length > 0 && !isMobile && (
+        {opportunityData.length > 0 && !isMobile && (
           <Drawer
             variant="permanent"
             anchor="right"
