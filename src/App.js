@@ -889,23 +889,12 @@ function App() {
                 }}
               >
                 <Typography
-                  variant="h5"
-                  sx={{
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    mr: 1,
-                  }}
-                >
-                  AIM
-                </Typography>
-                <Typography
                   variant="h6"
                   sx={{
                     fontWeight: 500,
                   }}
                 >
-                  Team Dashboard
+                  I&O Team Dashboard
                 </Typography>
               </Box>
 
@@ -1126,7 +1115,7 @@ function App() {
                     gutterBottom
                     sx={{ fontWeight: 700, mb: 2 }}
                   >
-                    Welcome to the AIM Team Dashboard
+                    Welcome to the I&O Team Dashboard
                   </Typography>
 
                   <Typography
