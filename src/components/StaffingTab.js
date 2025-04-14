@@ -28,6 +28,10 @@ import {
   TableRow,
   TableSortLabel,
   Alert,
+  IconButton,
+  Tooltip,
+  Collapse,
+  Button,
 } from "@mui/material";
 import {
   BarChart,
@@ -49,6 +53,10 @@ import {
 import BusinessIcon from "@mui/icons-material/Business";
 import PersonIcon from "@mui/icons-material/Person";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import InfoIcon from "@mui/icons-material/Info";
+import ClearIcon from "@mui/icons-material/Clear";
 
 import * as XLSX from "xlsx";
 
@@ -304,6 +312,8 @@ const formatDate = (dateStr) => {
 };
 
 const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
+  const [expandedRows, setExpandedRows] = useState({});
+
   const theme = useTheme();
   const [staffingData, setStaffingData] = useState([]);
   const [periods, setPeriods] = useState([]);
@@ -320,6 +330,261 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [activeTimeIndex, setActiveTimeIndex] = useState(0);
   const [activeRoleIndex, setActiveRoleIndex] = useState(0);
+
+  const EmployeeDetailCard = ({ employee, selectedPeriod, theme }) => {
+    // Prepare time allocation data across periods
+    const timeAllocationData = employee.periods.map((period) => {
+      // Calculate remaining available hours
+      const totalAllocated =
+        period.chargeable +
+        period.sellOn +
+        period.resWithJC +
+        period.resNoJC +
+        period.formation;
+      const remainingAvailable = period.total - totalAllocated;
+
+      return {
+        period: period.period,
+        chargeable: period.chargeable,
+        pending: period.sellOn,
+        resWithJC: period.resWithJC,
+        resNoJC: period.resNoJC,
+        formation: period.formation,
+        netAvailable: period.total,
+        remainingAvailable: remainingAvailable,
+        vacation: period.vacation,
+        loa: period.loa,
+        utilization:
+          period.total > 0 ? (period.chargeable / period.total) * 100 : 0,
+      };
+    });
+
+    // Define hour types with labels and colors
+    const hourTypes = [
+      {
+        key: "netAvailable",
+        label: "Net Available",
+        color: theme.palette.text.primary,
+        indent: 0,
+      },
+      {
+        key: "chargeable",
+        label: "Chargeable",
+        color: theme.palette.success.main,
+        indent: 1,
+      },
+      {
+        key: "pending",
+        label: "Pending",
+        color: theme.palette.primary.light,
+        indent: 1,
+      },
+      {
+        key: "resWithJC",
+        label: "Res w/ JC",
+        color: theme.palette.primary.main,
+        indent: 1,
+      },
+      {
+        key: "resNoJC",
+        label: "Res w/o JC",
+        color: theme.palette.primary.dark,
+        indent: 1,
+      },
+      {
+        key: "formation",
+        label: "Formation",
+        color: theme.palette.grey[500],
+        indent: 1,
+      },
+      {
+        key: "remainingAvailable",
+        label: "Remaining Available",
+        color: theme.palette.info.main,
+        indent: 0,
+      },
+      {
+        key: "vacation",
+        label: "Vacation",
+        color: theme.palette.warning.light,
+        indent: 0,
+      },
+      {
+        key: "loa",
+        label: "LOA",
+        color: theme.palette.warning.main,
+        indent: 0,
+      },
+    ];
+
+    const currentPeriodData =
+      timeAllocationData.find((period) => period.period === selectedPeriod) ||
+      timeAllocationData[0];
+
+    return (
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+          boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.08)}`,
+        }}
+      >
+        {/* Header */}
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            p: 2.5,
+            backgroundColor: alpha(theme.palette.primary.main, 0.04),
+            borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+          }}
+        >
+          <Box>
+            <Typography variant="h6" fontWeight={700}>
+              {employee.name}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {employee.team} • {employee.role}
+            </Typography>
+          </Box>
+          <Box sx={{ textAlign: "right" }}>
+            <Typography variant="body2" color="text.secondary">
+              Avg Utilization: {employee.averageUtilization.toFixed(1)}%
+            </Typography>
+            <Typography variant="body2" color="success.main">
+              Current Period Chargeable:{" "}
+              {currentPeriodData.chargeable.toFixed(1)} hrs
+            </Typography>
+            <Typography variant="body2" color="info.main">
+              Remaining Available:{" "}
+              {currentPeriodData.remainingAvailable.toFixed(1)} hrs
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Pivoted Time Allocation Table */}
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Hour Type</TableCell>
+                {timeAllocationData.map((period) => (
+                  <TableCell
+                    key={period.period}
+                    align="right"
+                    sx={{
+                      fontWeight: period.period === selectedPeriod ? 600 : 400,
+                      color:
+                        period.period === selectedPeriod
+                          ? theme.palette.primary.main
+                          : "inherit",
+                    }}
+                  >
+                    {period.period}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {hourTypes.map((hourType) => (
+                <TableRow key={hourType.key}>
+                  <TableCell>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        ml: hourType.indent * 2,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          backgroundColor: hourType.color,
+                          mr: 1,
+                        }}
+                      />
+                      <Typography variant="body2">
+                        {hourType.indent > 0 && "- "}
+                        {hourType.label}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  {timeAllocationData.map((period) => (
+                    <TableCell
+                      key={period.period}
+                      align="right"
+                      sx={{
+                        color: hourType.color,
+                        fontWeight:
+                          period.period === selectedPeriod ? 600 : 400,
+                      }}
+                    >
+                      {period[hourType.key].toFixed(1)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+              {/* Utilization Row */}
+              <TableRow>
+                <TableCell>
+                  <Typography variant="body2" fontWeight={600}>
+                    Utilization
+                  </Typography>
+                </TableCell>
+                {timeAllocationData.map((period) => (
+                  <TableCell key={period.period} align="right">
+                    <Chip
+                      label={`${period.utilization.toFixed(1)}%`}
+                      size="small"
+                      color={
+                        period.utilization > 75
+                          ? "success"
+                          : period.utilization > 65
+                          ? "warning"
+                          : period.utilization > 55
+                          ? "info"
+                          : "error"
+                      }
+                      variant="outlined"
+                    />
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+    );
+  };
+
+  const toggleRowExpansion = (employeeName) => {
+    setExpandedRows((prev) => ({
+      ...prev,
+      [employeeName]: !prev[employeeName],
+    }));
+  };
+
+  // Add keyboard navigation for expanded rows
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Close all expanded rows when Escape is pressed
+      if (event.key === "Escape") {
+        setExpandedRows({});
+      }
+    };
+
+    // Add event listener
+    window.addEventListener("keydown", handleKeyDown);
+
+    // Cleanup event listener
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   // Helper function to create proper waterfall chart data with running totals
   const createWaterfallData = (metrics) => {
@@ -1976,6 +2241,16 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
               <Table aria-label="employee details table">
                 <TableHead>
                   <TableRow>
+                    <TableCell
+                      padding="checkbox"
+                      sx={{ width: 48, minWidth: 48, maxWidth: 48 }}
+                    >
+                      <Tooltip title="Click rows to view details">
+                        <IconButton size="small">
+                          <KeyboardArrowDownIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell>
                       <TableSortLabel
                         active={sortConfig.key === "name"}
@@ -2015,8 +2290,12 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                         Role
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell>Arrival Date</TableCell>
-                    <TableCell>Departure Date</TableCell>
+                    <TableCell align="right">Net Available</TableCell>
+                    <TableCell align="right">Chargeable</TableCell>
+                    <TableCell align="right">Pending</TableCell>
+                    <TableCell align="right">Res w/ JC</TableCell>
+                    <TableCell align="right">Res w/o JC</TableCell>
+                    <TableCell align="right">Remaining</TableCell>
                     <TableCell align="right">
                       <TableSortLabel
                         active={sortConfig.key === "averageUtilization"}
@@ -2030,87 +2309,227 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                         Utilization
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell align="right">Chargeable Hours</TableCell>
-                    <TableCell align="right">Available Hours</TableCell>
                     <TableCell align="right">Status</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {sortedData.map((employee) => {
-                    let utilization, chargeable, available;
-
+                    let periodData;
                     if (selectedPeriod) {
-                      // Get data for selected period
-                      const periodData = employee.periods.find(
+                      periodData = employee.periods.find(
                         (p) => p.period === selectedPeriod
                       );
-                      utilization = periodData ? periodData.utilization : 0;
-                      chargeable = periodData ? periodData.chargeable : 0;
-                      available = periodData ? periodData.total : 0;
-                    } else {
-                      // Use average across all periods
-                      utilization = employee.averageUtilization;
-                      chargeable = employee.totalChargeable;
-                      available = employee.totalAvailable;
                     }
 
+                    // If no period data, use overall averages
+                    const netAvailable = periodData
+                      ? periodData.total
+                      : employee.totalAvailable;
+                    const chargeable = periodData
+                      ? periodData.chargeable
+                      : employee.totalChargeable;
+                    const pending = periodData
+                      ? periodData.sellOn
+                      : employee.totalSellOn;
+                    const resWithJC = periodData
+                      ? periodData.resWithJC
+                      : employee.totalResWithJC;
+                    const resNoJC = periodData
+                      ? periodData.resNoJC
+                      : employee.totalResNoJC;
+
+                    // Calculate remaining available
+                    const totalAllocated =
+                      chargeable + pending + resWithJC + resNoJC;
+                    const remainingAvailable = netAvailable - totalAllocated;
+
+                    const utilization = periodData
+                      ? periodData.utilization
+                      : employee.averageUtilization;
                     const status = getUtilizationStatus(utilization);
+                    const isExpanded = expandedRows[employee.name];
 
                     return (
-                      <TableRow
-                        key={employee.name}
-                        hover
-                        sx={{
-                          "&:last-child td, &:last-child th": { border: 0 },
-                        }}
-                      >
-                        <TableCell component="th" scope="row">
-                          {employee.name}
-                        </TableCell>
-                        <TableCell>{employee.team}</TableCell>
-                        <TableCell>{employee.role}</TableCell>
-                        <TableCell>
-                          {formatDate(employee.arrivalDate)}
-                        </TableCell>
-                        <TableCell>
-                          {formatDate(employee.departureDate)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
+                      <React.Fragment key={employee.name}>
+                        <TableRow
+                          hover
                           sx={{
-                            color: getUtilizationColor(theme, status),
-                            fontWeight: 600,
+                            "&:last-child td, &:last-child th": { border: 0 },
+                            cursor: "pointer",
+                            backgroundColor: isExpanded
+                              ? alpha(theme.palette.primary.main, 0.04)
+                              : "inherit",
+                            transition: "background-color 0.2s",
+                            "&:hover": {
+                              backgroundColor: isExpanded
+                                ? alpha(theme.palette.primary.main, 0.06)
+                                : alpha(theme.palette.primary.main, 0.02),
+                            },
                           }}
+                          onClick={() => toggleRowExpansion(employee.name)}
                         >
-                          {utilization.toFixed(1)}%
-                        </TableCell>
-                        <TableCell align="right">
-                          {chargeable.toFixed(1)}
-                        </TableCell>
-                        <TableCell align="right">
-                          {available.toFixed(1)}
-                        </TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            label={getUtilizationLabel(status)}
-                            color={
-                              status === "very-good"
-                                ? "success"
-                                : status === "average"
-                                ? "warning"
-                                : status === "not-good"
-                                ? "info"
-                                : "error"
-                            }
-                            size="small"
-                          />
-                        </TableCell>
-                      </TableRow>
+                          <TableCell padding="checkbox">
+                            <IconButton size="small">
+                              {isExpanded ? (
+                                <KeyboardArrowUpIcon />
+                              ) : (
+                                <KeyboardArrowDownIcon />
+                              )}
+                            </IconButton>
+                          </TableCell>
+                          <TableCell component="th" scope="row">
+                            {employee.name}
+                          </TableCell>
+                          <TableCell>{employee.team}</TableCell>
+                          <TableCell>{employee.role}</TableCell>
+                          <TableCell align="right">
+                            {netAvailable.toFixed(1)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ color: theme.palette.success.main }}
+                          >
+                            {chargeable.toFixed(1)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ color: theme.palette.primary.light }}
+                          >
+                            {pending.toFixed(1)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ color: theme.palette.primary.main }}
+                          >
+                            {resWithJC.toFixed(1)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ color: theme.palette.primary.dark }}
+                          >
+                            {resNoJC.toFixed(1)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ color: theme.palette.info.main }}
+                          >
+                            {remainingAvailable.toFixed(1)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              color: getUtilizationColor(theme, status),
+                              fontWeight: 600,
+                            }}
+                          >
+                            {utilization.toFixed(1)}%
+                          </TableCell>
+                          <TableCell align="right">
+                            <Chip
+                              label={getUtilizationLabel(status)}
+                              color={
+                                status === "very-good"
+                                  ? "success"
+                                  : status === "average"
+                                  ? "warning"
+                                  : status === "not-good"
+                                  ? "info"
+                                  : "error"
+                              }
+                              size="small"
+                            />
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell
+                            style={{ paddingBottom: 0, paddingTop: 0 }}
+                            colSpan={10}
+                          >
+                            <Collapse
+                              in={isExpanded}
+                              timeout="auto"
+                              unmountOnExit
+                            >
+                              <Box sx={{ m: 2 }}>
+                                <EmployeeDetailCard
+                                  employee={employee}
+                                  selectedPeriod={selectedPeriod}
+                                  theme={theme}
+                                />
+                              </Box>
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      </React.Fragment>
                     );
                   })}
                 </TableBody>
               </Table>
             </TableContainer>
+            {Object.keys(expandedRows).length > 0 && (
+              <>
+                <Box
+                  sx={{
+                    p: 2,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    backgroundColor: alpha(theme.palette.primary.main, 0.04),
+                    borderTop: `1px solid ${alpha(
+                      theme.palette.primary.main,
+                      0.1
+                    )}`,
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <InfoIcon color="primary" fontSize="small" sx={{ mr: 1 }} />
+                    <Typography variant="body2" color="text.secondary">
+                      Tip: Click row again to collapse, or use Esc key to close
+                      all expanded rows
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="text"
+                    color="primary"
+                    size="small"
+                    onClick={() => setExpandedRows({})}
+                  >
+                    Close All
+                  </Button>
+                </Box>
+                <Box
+                  sx={{
+                    p: 2,
+                    backgroundColor: alpha(theme.palette.primary.main, 0.02),
+                    borderTop: `1px solid ${alpha(
+                      theme.palette.primary.main,
+                      0.1
+                    )}`,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    {Object.keys(expandedRows).length} employee
+                    {Object.keys(expandedRows).length > 1 ? "s" : ""} expanded
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <Tooltip title="Close all expanded rows">
+                      <Button
+                        variant="outlined"
+                        color="primary"
+                        size="small"
+                        onClick={() => setExpandedRows({})}
+                        startIcon={<ClearIcon />}
+                      >
+                        Close All
+                      </Button>
+                    </Tooltip>
+                  </Box>
+                </Box>
+              </>
+            )}
           </Paper>
         </Grid>
       </Grid>
