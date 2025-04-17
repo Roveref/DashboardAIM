@@ -1,3 +1,12 @@
+// Format date in French format
+const formatDateFR = (date) => {
+  if (!date) return "";
+  return date.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
 import React, { useState, useEffect } from "react";
 import {
   Grid,
@@ -48,33 +57,155 @@ import {
 const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   const [periodRange, setPeriodRange] = useState([0, 100]);
 
+  // Generate timeline marks for the slider that correspond to month beginnings
+  const generateTimelineMarks = (startDate, endDate) => {
+    if (!startDate || !endDate) return [];
+
+    const marks = [];
+
+    // Create a copy of the start date and set to first of the month
+    const currentDate = new Date(startDate);
+    currentDate.setDate(1); // Set to first day of month
+
+    // Create end date copy for calculations
+    const endDateCopy = new Date(endDate);
+    // Set to the first day of the next month to include the last month
+    endDateCopy.setMonth(endDateCopy.getMonth() + 1);
+    endDateCopy.setDate(1);
+
+    // Get the total duration in milliseconds for percentage calculations
+    const totalDuration = endDateCopy.getTime() - currentDate.getTime();
+    if (totalDuration <= 0) return [];
+
+    // Loop through each month until we reach the end date
+    while (currentDate < endDateCopy) {
+      // Calculate position percentage for this month
+      const position =
+        ((currentDate.getTime() - startDate.getTime()) / totalDuration) * 100;
+
+      // Make sure the position is within the slider range (0-100)
+      if (position >= 0 && position <= 100) {
+        // Determine label format - show year for January or if it's the first mark
+        const isYearChange = currentDate.getMonth() === 0 || marks.length === 0;
+
+        marks.push({
+          value: position,
+          label: isYearChange
+            ? currentDate.toLocaleDateString("fr-FR", {
+                month: "short",
+                year: "numeric",
+              })
+            : currentDate.toLocaleDateString("fr-FR", { month: "short" }),
+          // Store the actual date for reference
+          date: new Date(currentDate),
+        });
+      }
+
+      // Move to first day of next month
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+
+    return marks;
+  };
+
+  // Snap to month beginnings when updating date range
   const prepareDateRange = () => {
     if (!data || data.length === 0) return;
 
-    // Sort data by creation date
+    // Sort data by Last Status Change Date
     const sortedData = [...data].sort(
-      (a, b) => new Date(a["Creation Date"]) - new Date(b["Creation Date"])
+      (a, b) =>
+        new Date(a["Last Status Change Date"]) -
+        new Date(b["Last Status Change Date"])
     );
 
-    const firstDate = new Date(sortedData[0]["Creation Date"]);
+    const firstDate = new Date(sortedData[0]["Last Status Change Date"]);
     const lastDate = new Date(
-      sortedData[sortedData.length - 1]["Creation Date"]
+      sortedData[sortedData.length - 1]["Last Status Change Date"]
     );
     const totalDuration = lastDate.getTime() - firstDate.getTime();
 
-    // Calculate start and end dates based on slider
-    const start = new Date(
+    // Calculate raw start and end dates based on slider
+    const rawStart = new Date(
       firstDate.getTime() + (totalDuration * periodRange[0]) / 100
     );
-    const end = new Date(
+    const rawEnd = new Date(
       firstDate.getTime() + (totalDuration * periodRange[1]) / 100
     );
+
+    // Snap start date to beginning of month
+    const start = new Date(rawStart);
+    start.setDate(1);
+
+    // Snap end date to beginning of month and add a month (to include the whole month)
+    const end = new Date(rawEnd);
+    end.setDate(1);
+    if (periodRange[1] < 100) {
+      // If not at the very end
+      end.setMonth(end.getMonth() + 1);
+    }
 
     setDateRange([start, end]);
   };
 
   const handlePeriodChange = (event, newValue) => {
     setPeriodRange(newValue);
+
+    // Find matching timeline marks for the selection
+    if (data && data.length > 0) {
+      const sortedData = [...data].sort(
+        (a, b) =>
+          new Date(a["Last Status Change Date"]) -
+          new Date(b["Last Status Change Date"])
+      );
+
+      const firstDate = new Date(sortedData[0]["Last Status Change Date"]);
+      const lastDate = new Date(
+        sortedData[sortedData.length - 1]["Last Status Change Date"]
+      );
+
+      // Get all available month marks
+      const timelineMarks = generateTimelineMarks(firstDate, lastDate);
+
+      // Find closest marks to selection points
+      // This ensures we're selecting exactly at month boundaries
+      if (timelineMarks.length > 0) {
+        // Find closest mark to start position
+        const startMarkIndex = timelineMarks.reduce(
+          (closest, current, index) => {
+            const currentDiff = Math.abs(current.value - newValue[0]);
+            const closestDiff = Math.abs(
+              timelineMarks[closest].value - newValue[0]
+            );
+            return currentDiff < closestDiff ? index : closest;
+          },
+          0
+        );
+
+        // Find closest mark to end position
+        const endMarkIndex = timelineMarks.reduce((closest, current, index) => {
+          const currentDiff = Math.abs(current.value - newValue[1]);
+          const closestDiff = Math.abs(
+            timelineMarks[closest].value - newValue[1]
+          );
+          return currentDiff < closestDiff ? index : closest;
+        }, 0);
+
+        // Get the actual dates from marks
+        if (timelineMarks[startMarkIndex] && timelineMarks[endMarkIndex]) {
+          // Directly set the date range to the exact month beginnings from marks
+          setDateRange([
+            timelineMarks[startMarkIndex].date,
+            // If end mark is not the last one, increase by a month to include the whole month
+            endMarkIndex < timelineMarks.length - 1
+              ? new Date(
+                  new Date(timelineMarks[endMarkIndex + 1].date).setDate(0)
+                ) // Last day of month
+              : lastDate,
+          ]);
+        }
+      }
+    }
   };
   const [yoyBookings, setYoyBookings] = useState([]);
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
@@ -122,7 +253,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     },
   ];
 
-  // Update date analysis method
+  // Update date analysis method to use Last Status Change Date
   const updateDateAnalysis = () => {
     if (!data || !dateRange[0] || !dateRange[1]) return;
 
@@ -133,16 +264,24 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     console.log("Start Date:", startDate);
     console.log("End Date:", endDate);
 
-    // Get new opportunities, wins, and losses within the date range
-    const newOpps = getNewOpportunities(data, startDate, endDate);
-    const wins = getNewWins(data, startDate, endDate);
-    const losses = getNewLosses(data, startDate, endDate);
+    // Get new bookings and losses within the date range, based on Last Status Change Date
+    // For booking (status 14), the winning date is the last status change date
+    const wins = data.filter((item) => {
+      if (item["Status"] !== 14) return false;
+      const statusDate = new Date(item["Last Status Change Date"]);
+      return statusDate >= startDate && statusDate <= endDate;
+    });
 
-    console.log("New Opportunities:", newOpps.length);
+    // For losses (status 15), the lost date is the last status change date
+    const losses = data.filter((item) => {
+      if (item["Status"] !== 15) return false;
+      const statusDate = new Date(item["Last Status Change Date"]);
+      return statusDate >= startDate && statusDate <= endDate;
+    });
+
     console.log("Wins:", wins.length);
     console.log("Losses:", losses.length);
 
-    setNewOpportunities(newOpps);
     setNewWins(wins);
     setNewLosses(losses);
 
@@ -260,7 +399,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     {year}:
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
-                    {new Intl.NumberFormat("en-US", {
+                    {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
@@ -309,22 +448,12 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     );
     setTotalBookings(total);
 
-    const calculateRevenueWithAllocation = (opportunities) => {
-      return opportunities.reduce((sum, item) => {
-        // Check if the item has meaningful allocation
-        if (item["Is Allocated"] && item["Allocation Percentage"] > 0) {
-          return sum + (item["Allocated Gross Revenue"] || 0);
-        }
-        // Fallback to gross revenue if no allocation
-        return sum + (item["Gross Revenue"] || 0);
-      }, 0);
-    };
-
     // Calculate monthly yearly bookings for the bar chart
+    // Use Last Status Change Date instead of Creation Date
     const bookedData = data.filter((item) => item["Status"] === 14);
     const monthly = getMonthlyYearlyTotals(
       bookedData, // Use only booked opportunities
-      "Creation Date",
+      "Last Status Change Date", // Use Last Status Change Date instead of Creation Date
       "Gross Revenue"
     );
     const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
@@ -387,6 +516,70 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     );
   }
 
+  // Filter for 2025 bookings
+  const bookings2025 = filteredOpportunities.filter(
+    (item) =>
+      item["Status"] === 14 &&
+      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+  );
+
+  // Filter for 2025 losses
+  const losses2025 = filteredOpportunities.filter(
+    (item) =>
+      item["Status"] === 15 &&
+      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+  );
+
+  // Get total revenue for 2025 bookings
+  const bookings2025Revenue = sumBy(bookings2025, (item) => {
+    // Check if allocation exists and is meaningful
+    if (item["Is Allocated"] && item["Allocated Gross Revenue"] > 0) {
+      return item["Allocated Gross Revenue"];
+    }
+    // Fallback to Gross Revenue if no meaningful allocation
+    return item["Gross Revenue"] || 0;
+  });
+
+  // Get total revenue for 2025 losses
+  const losses2025Revenue = sumBy(losses2025, (item) => {
+    // Check if allocation exists and is meaningful
+    if (item["Is Allocated"] && item["Allocated Gross Revenue"] > 0) {
+      return item["Allocated Gross Revenue"];
+    }
+    // Fallback to Gross Revenue if no meaningful allocation
+    return item["Gross Revenue"] || 0;
+  });
+
+  // Calculate average booking size for 2025
+  const averageBookingSize2025 =
+    bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
+
+  // All 2025 bookings for total card comparison
+  const allBookings2025 = data.filter(
+    (item) =>
+      item["Status"] === 14 &&
+      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+  );
+
+  // All 2025 losses for total card comparison
+  const allLosses2025 = data.filter(
+    (item) =>
+      item["Status"] === 15 &&
+      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+  );
+
+  // Get total revenue for all 2025 bookings
+  const allBookings2025Revenue = sumBy(allBookings2025, "Gross Revenue");
+
+  // Get total revenue for all 2025 losses
+  const allLosses2025Revenue = sumBy(allLosses2025, "Gross Revenue");
+
+  // Calculate average booking size for all 2025 bookings
+  const allAverageBookingSize2025 =
+    allBookings2025.length > 0
+      ? allBookings2025Revenue / allBookings2025.length
+      : 0;
+
   return (
     <Fade in={!loading} timeout={500}>
       <Box sx={{ width: "100%" }}>
@@ -427,7 +620,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 </Typography>
 
                 <Chip
-                  label={`${filteredOpportunities.length} opps`}
+                  label={`${bookings2025.length} opps`}
                   color="primary"
                   size="small"
                   sx={{
@@ -453,51 +646,22 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={700}
                     sx={{ mb: 0.5 }}
                   >
-                    {new Intl.NumberFormat("en-US", {
+                    {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(
-                      filteredOpportunities
-                        .filter(
-                          (item) =>
-                            item["Status"] === 14 &&
-                            new Date(item["Creation Date"]).getFullYear() ===
-                              2025
-                        )
-                        .reduce((sum, item) => {
-                          // Check if the item has meaningful allocation
-                          if (
-                            item["Is Allocated"] &&
-                            item["Allocation Percentage"] > 0
-                          ) {
-                            return sum + (item["Allocated Gross Revenue"] || 0);
-                          }
-                          // Fallback to gross revenue if no allocation
-                          return sum + (item["Gross Revenue"] || 0);
-                        }, 0)
-                    )}
+                    }).format(bookings2025Revenue)}
                   </Typography>
                   {filteredOpportunities.length !== data.length && (
                     <Typography variant="caption" color="text.secondary">
                       (Total:{" "}
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(
-                        sumBy(
-                          data.filter(
-                            (item) =>
-                              item["Status"] === 14 &&
-                              new Date(item["Creation Date"]).getFullYear() ===
-                                2025
-                          ),
-                          "Gross Revenue"
-                        )
-                      )}
+                      }).format(allBookings2025Revenue)}
                       )
                     </Typography>
                   )}
@@ -512,14 +676,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  {
-                    filteredOpportunities.filter(
-                      (item) =>
-                        item["Status"] === 14 &&
-                        new Date(item["Creation Date"]).getFullYear() === 2025
-                    ).length
-                  }{" "}
-                  opportunities
+                  {bookings2025.length} opportunities
                 </Typography>
 
                 <Box
@@ -536,8 +693,10 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     sx={{ mr: 1 }}
                   >
                     {filteredOpportunities.length !== data.length
-                      ? `${filteredOpportunities.length}%`
-                      : "10%"}{" "}
+                      ? `${Math.round(
+                          (bookings2025.length / allBookings2025.length) * 100
+                        )}%`
+                      : "100%"}{" "}
                     vs total
                   </Typography>
                   <ArrowUpwardIcon fontSize="small" color="inherit" />
@@ -574,7 +733,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 </Typography>
 
                 <Chip
-                  label={`${filteredOpportunities.length} opps`}
+                  label={`${losses2025.length} opps`}
                   color="error"
                   size="small"
                   sx={{
@@ -600,47 +759,22 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={700}
                     sx={{ mb: 0.5 }}
                   >
-                    {new Intl.NumberFormat("en-US", {
+                    {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(
-                      sumBy(
-                        filteredOpportunities.filter(
-                          (item) =>
-                            item["Status"] === 15 &&
-                            new Date(item["Lost Date"]).getFullYear() === 2025
-                        ),
-                        (item) => {
-                          // First check if allocation exists and is meaningful
-                          if (item["Allocated Gross Revenue"] > 0) {
-                            return item["Allocated Gross Revenue"];
-                          }
-                          // Fallback to Gross Revenue if no meaningful allocation
-                          return item["Gross Revenue"] || 0;
-                        }
-                      )
-                    )}
+                    }).format(losses2025Revenue)}
                   </Typography>
                   {filteredOpportunities.length !== data.length && (
                     <Typography variant="caption" color="text.secondary">
                       (Total:{" "}
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(
-                        sumBy(
-                          data.filter(
-                            (item) =>
-                              item["Status"] === 15 &&
-                              new Date(item["Lost Date"]).getFullYear() === 2025
-                          ),
-                          "Gross Revenue"
-                        )
-                      )}
+                      }).format(allLosses2025Revenue)}
                       )
                     </Typography>
                   )}
@@ -655,14 +789,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  {
-                    filteredOpportunities.filter(
-                      (item) =>
-                        item["Status"] === 15 &&
-                        new Date(item["Lost Date"]).getFullYear() === 2025
-                    ).length
-                  }{" "}
-                  lost opportunities
+                  {losses2025.length} lost opportunities
                 </Typography>
 
                 <Box
@@ -678,9 +805,12 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={600}
                     sx={{ mr: 1 }}
                   >
-                    {filteredOpportunities.length !== data.length
-                      ? `${filteredOpportunities.length}%`
-                      : "-67%"}{" "}
+                    {filteredOpportunities.length !== data.length &&
+                    allLosses2025.length > 0
+                      ? `${Math.round(
+                          (losses2025.length / allLosses2025.length) * 100
+                        )}%`
+                      : "100%"}{" "}
                     vs total
                   </Typography>
                   <ArrowDownwardIcon fontSize="small" color="inherit" />
@@ -717,7 +847,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 </Typography>
 
                 <Chip
-                  label={`${filteredOpportunities.length} opps`}
+                  label={`${bookings2025.length} opps`}
                   color="secondary"
                   size="small"
                   sx={{
@@ -743,78 +873,22 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={700}
                     sx={{ mb: 0.5 }}
                   >
-                    {new Intl.NumberFormat("en-US", {
+                    {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(
-                      filteredOpportunities.filter(
-                        (item) =>
-                          item["Status"] === 14 &&
-                          new Date(item["Creation Date"]).getFullYear() === 2025
-                      ).length > 0
-                        ? sumBy(
-                            filteredOpportunities.filter(
-                              (item) =>
-                                item["Status"] === 14 &&
-                                new Date(
-                                  item["Creation Date"]
-                                ).getFullYear() === 2025
-                            ),
-                            (item) => {
-                              // First check if allocation exists and is meaningful
-                              if (item["Allocated Gross Revenue"] > 0) {
-                                return item["Allocated Gross Revenue"];
-                              }
-                              // Fallback to Gross Revenue if no meaningful allocation
-                              return item["Gross Revenue"] || 0;
-                            }
-                          ) /
-                            filteredOpportunities.filter(
-                              (item) =>
-                                item["Status"] === 14 &&
-                                new Date(
-                                  item["Creation Date"]
-                                ).getFullYear() === 2025
-                            ).length
-                        : 0
-                    )}
+                    }).format(averageBookingSize2025)}
                   </Typography>
                   {filteredOpportunities.length !== data.length && (
                     <Typography variant="caption" color="text.secondary">
                       (Total:{" "}
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(
-                        data.filter(
-                          (item) =>
-                            item["Status"] === 14 &&
-                            new Date(item["Creation Date"]).getFullYear() ===
-                              2025
-                        ).length > 0
-                          ? sumBy(
-                              data.filter(
-                                (item) =>
-                                  item["Status"] === 14 &&
-                                  new Date(
-                                    item["Creation Date"]
-                                  ).getFullYear() === 2025
-                              ),
-                              "Gross Revenue"
-                            ) /
-                              data.filter(
-                                (item) =>
-                                  item["Status"] === 14 &&
-                                  new Date(
-                                    item["Creation Date"]
-                                  ).getFullYear() === 2025
-                              ).length
-                          : 0
-                      )}
+                      }).format(allAverageBookingSize2025)}
                       )
                     </Typography>
                   )}
@@ -830,48 +904,40 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
               >
                 <Typography variant="body2" color="text.secondary">
                   Range:{" "}
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    Math.min(
-                      ...filteredOpportunities
-                        .filter(
-                          (item) =>
-                            item["Status"] === 14 &&
-                            new Date(item["Creation Date"]).getFullYear() ===
-                              2025
+                  {bookings2025.length > 0 ? (
+                    <>
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        Math.min(
+                          ...bookings2025.map((opp) =>
+                            opp["Allocated Gross Revenue"] > 0
+                              ? opp["Allocated Gross Revenue"]
+                              : opp["Gross Revenue"] || 0
+                          )
                         )
-                        .map((opp) =>
-                          opp["Allocated Gross Revenue"] > 0
-                            ? opp["Allocated Gross Revenue"]
-                            : opp["Gross Revenue"] || 0
+                      )}{" "}
+                      -
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        Math.max(
+                          ...bookings2025.map((opp) =>
+                            opp["Allocated Gross Revenue"] > 0
+                              ? opp["Allocated Gross Revenue"]
+                              : opp["Gross Revenue"] || 0
+                          )
                         )
-                    )
-                  )}{" "}
-                  -
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "EUR",
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(
-                    Math.max(
-                      ...filteredOpportunities
-                        .filter(
-                          (item) =>
-                            item["Status"] === 14 &&
-                            new Date(item["Creation Date"]).getFullYear() ===
-                              2025
-                        )
-                        .map((opp) =>
-                          opp["Allocated Gross Revenue"] > 0
-                            ? opp["Allocated Gross Revenue"]
-                            : opp["Gross Revenue"] || 0
-                        )
-                    )
+                      )}
+                    </>
+                  ) : (
+                    "N/A"
                   )}
                 </Typography>
 
@@ -888,8 +954,11 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={600}
                     sx={{ mr: 1 }}
                   >
-                    {filteredOpportunities.length !== data.length
-                      ? `${filteredOpportunities.length}%`
+                    {filteredOpportunities.length !== data.length &&
+                    allBookings2025.length > 0
+                      ? `${Math.round(
+                          (bookings2025.length / allBookings2025.length) * 100
+                        )}%`
                       : "100%"}{" "}
                     vs total
                   </Typography>
@@ -931,7 +1000,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                   yAxisId="monthly"
                   orientation="left"
                   tickFormatter={(value) =>
-                    new Intl.NumberFormat("en-US", {
+                    new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       notation: "compact",
@@ -948,7 +1017,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                   yAxisId="cumulative"
                   orientation="right"
                   tickFormatter={(value) =>
-                    new Intl.NumberFormat("en-US", {
+                    new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       notation: "compact",
@@ -1011,38 +1080,183 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
               Period Analysis
             </Typography>
             <Box sx={{ px: 4, mb: 4 }}>
-              <Slider
-                value={periodRange}
-                onChange={handlePeriodChange}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => {
-                  if (!data || data.length === 0) return "";
-                  const sortedData = [...data].sort(
-                    (a, b) =>
-                      new Date(a["Creation Date"]) -
-                      new Date(b["Creation Date"])
-                  );
-                  const firstDate = new Date(sortedData[0]["Creation Date"]);
-                  const lastDate = new Date(
-                    sortedData[sortedData.length - 1]["Creation Date"]
-                  );
-                  const totalDuration =
-                    lastDate.getTime() - firstDate.getTime();
-                  const selectedDate = new Date(
-                    firstDate.getTime() + (totalDuration * value) / 100
-                  );
-                  return selectedDate.toLocaleDateString();
-                }}
-              />
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Select a date range on the timeline
+                </Typography>
+              </Box>
+
+              {data && data.length > 0 && (
+                <>
+                  {/* Timeline Slider */}
+                  <Box
+                    sx={{
+                      mt: 3,
+                      mb: 4,
+                      height: 100, // Increased height for the timeline
+                      position: "relative",
+                    }}
+                  >
+                    {/* First get date range for the marks */}
+                    {(() => {
+                      const sortedData = [...data].sort(
+                        (a, b) =>
+                          new Date(a["Last Status Change Date"]) -
+                          new Date(b["Last Status Change Date"])
+                      );
+
+                      const firstDate = new Date(
+                        sortedData[0]["Last Status Change Date"]
+                      );
+                      const lastDate = new Date(
+                        sortedData[sortedData.length - 1][
+                          "Last Status Change Date"
+                        ]
+                      );
+
+                      // Generate timeline marks
+                      const timelineMarks = generateTimelineMarks(
+                        firstDate,
+                        lastDate
+                      );
+
+                      return (
+                        <Slider
+                          value={periodRange}
+                          onChange={handlePeriodChange}
+                          valueLabelDisplay="auto"
+                          valueLabelFormat={(value) => {
+                            // Find the corresponding date
+                            const totalDuration =
+                              lastDate.getTime() - firstDate.getTime();
+                            const selectedDate = new Date(
+                              firstDate.getTime() +
+                                (totalDuration * value) / 100
+                            );
+                            return formatDateFR(selectedDate);
+                          }}
+                          marks={timelineMarks}
+                          step={null} // This forces selection only at mark points
+                          sx={{
+                            "& .MuiSlider-markLabel": {
+                              fontSize: "0.7rem",
+                              color: "text.secondary",
+                              transform: "rotate(-45deg) translateX(-100%)",
+                              transformOrigin: "top left",
+                              whiteSpace: "nowrap",
+                              marginTop: "8px",
+                            },
+                            "& .MuiSlider-thumb": {
+                              height: 16,
+                              width: 16,
+                              backgroundColor: theme.palette.primary.main,
+                            },
+                            "& .MuiSlider-track": {
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: theme.palette.primary.main,
+                              border: "none", // Remove border to fix the blue line issue
+                            },
+                            "& .MuiSlider-rail": {
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: alpha(
+                                theme.palette.primary.main,
+                                0.2
+                              ),
+                              opacity: 1,
+                            },
+                            "& .MuiSlider-mark": {
+                              backgroundColor: theme.palette.primary.main,
+                              height: 8,
+                              width: 1,
+                              marginTop: -3,
+                            },
+                            mt: 4, // Extra margin at top to accommodate rotated labels
+                            "& .MuiSlider-root": {
+                              border: "none", // Remove any border on root element
+                            },
+                          }}
+                        />
+                      );
+                    })()}
+
+                    {/* Visual indicator of selected period (positioned below slider) */}
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        bottom: -10,
+                        left: `${periodRange[0]}%`,
+                        width: `${periodRange[1] - periodRange[0]}%`,
+                        height: 4,
+                        backgroundColor: alpha(theme.palette.primary.main, 0.6),
+                        borderRadius: 2,
+                        border: "none",
+                      }}
+                    />
+                  </Box>
+                </>
+              )}
+
+              {/* Date Range Display Panel */}
               <Box
-                sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  mt: 2,
+                  mb: 1,
+                  backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                  borderRadius: 2,
+                  p: 1.5,
+                }}
               >
-                <Typography variant="body2" color="text.secondary">
-                  {dateRange[0] ? dateRange[0].toLocaleDateString() : "Start"}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {dateRange[1] ? dateRange[1].toLocaleDateString() : "End"}
-                </Typography>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Start date:
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color="primary.main"
+                  >
+                    {dateRange[0] ? formatDateFR(dateRange[0]) : "Start"}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ textAlign: "center" }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Duration:
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color="primary.dark"
+                  >
+                    {dateRange[0] && dateRange[1]
+                      ? `${Math.round(
+                          (dateRange[1] - dateRange[0]) / (1000 * 60 * 60 * 24)
+                        )} days`
+                      : "-"}
+                  </Typography>
+                </Box>
+
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    align="right"
+                  >
+                    End date:
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color="primary.main"
+                    align="right"
+                  >
+                    {dateRange[1] ? formatDateFR(dateRange[1]) : "End"}
+                  </Typography>
+                </Box>
               </Box>
             </Box>
 
@@ -1081,7 +1295,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                         sx={{ mr: 1 }}
                       />
                       <Chip
-                        label={new Intl.NumberFormat("en-US", {
+                        label={new Intl.NumberFormat("fr-FR", {
                           style: "currency",
                           currency: "EUR",
                           minimumFractionDigits: 0,
@@ -1116,7 +1330,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                         sx={{ mr: 1 }}
                       />
                       <Chip
-                        label={new Intl.NumberFormat("en-US", {
+                        label={new Intl.NumberFormat("fr-FR", {
                           style: "currency",
                           currency: "EUR",
                           minimumFractionDigits: 0,
