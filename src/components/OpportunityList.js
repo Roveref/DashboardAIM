@@ -47,10 +47,48 @@ const statusText = {
   15: "Lost",
 };
 
+
+// Revenue calculation function to match previous implementation
+const calculateRevenueWithSegmentLogic = (item) => {
+  // Check if segment code is AUTO, CLR, or IEM
+  const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
+  const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
+
+  // If special segment code, return full gross revenue
+  if (isSpecialSegmentCode) {
+    return item['Gross Revenue'] || 0;
+  }
+
+  // Check each service line (1, 2, and 3)
+  const serviceLines = [
+    { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
+    { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
+    { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
+  ];
+
+  // Calculate total allocated revenue for Operations
+  const operationsAllocation = serviceLines.reduce((total, service) => {
+    if (service.line === 'Operations') {
+      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+    }
+    return total;
+  }, 0);
+
+  // If any Operations allocation is found, return that
+  if (operationsAllocation > 0) {
+    return operationsAllocation;
+  }
+
+  // If no specific Operations allocation, return full gross revenue
+  return item['Gross Revenue'] || 0;
+};
+
+
 // Row component with expandable details
 const OpportunityRow = ({ row, isSelected, onRowClick }) => {
   const [open, setOpen] = useState(false);
   const theme = useTheme();
+  const calculatedRevenue = calculateRevenueWithSegmentLogic(row);
 
   return (
     <>
@@ -137,7 +175,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
             {row["Is Allocated"] ? (
               <>
                 {typeof row["Allocated Gross Revenue"] === "number"
-                  ? new Intl.NumberFormat("en-US", {
+                  ? new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
@@ -149,12 +187,12 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                   color="text.secondary"
                   display="block"
                 >
-                  {row["Allocation Percentage"]}% of{" "}
-                  {row["Allocated Service Line"]}
+                  {row["Allocated Service Line"]}: {row["Allocation Percentage"]}%
+                  
                 </Typography>
               </>
             ) : typeof row["Gross Revenue"] === "number" ? (
-              new Intl.NumberFormat("en-US", {
+              new Intl.NumberFormat("fr-FR", {
                 style: "currency",
                 currency: "EUR",
                 minimumFractionDigits: 0,
@@ -163,6 +201,15 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
             ) : (
               row["Gross Revenue"]
             )}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block">
+            I&O:{" "}
+            {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(calculatedRevenue)}
           </Typography>
         </TableCell>
         <TableCell sx={{ width: "25%", minWidth: 150 }}>
@@ -231,7 +278,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       ID: {row["Opportunity ID"]} • Created:{" "}
-                      {new Date(row["Creation Date"]).toLocaleDateString()}
+                      {new Date(row["Creation Date"]).toLocaleDateString('fr-FR')}
                     </Typography>
                   </Box>
                   <Chip
@@ -275,7 +322,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                       fontWeight={700}
                       color="primary.main"
                     >
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
@@ -336,7 +383,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                           fontWeight={700}
                           color="secondary.main"
                         >
-                          {new Intl.NumberFormat("en-US", {
+                          {new Intl.NumberFormat("fr-FR", {
                             style: "currency",
                             currency: "EUR",
                             minimumFractionDigits: 0,
@@ -397,7 +444,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                           >
                             {new Date(
                               row["Last Status Change Date"]
-                            ).toLocaleDateString()}
+                            ).toLocaleDateString('fr-FR')}
                           </Typography>
 
                           <Typography variant="caption" color="text.secondary">
@@ -510,7 +557,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                             fontWeight={600}
                             color="primary.main"
                           >
-                            {new Intl.NumberFormat("en-US", {
+                            {new Intl.NumberFormat("fr-FR", {
                               style: "currency",
                               currency: "EUR",
                               minimumFractionDigits: 0,
@@ -581,7 +628,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                                 fontWeight={600}
                                 color="secondary.main"
                               >
-                                {new Intl.NumberFormat("en-US", {
+                                {new Intl.NumberFormat("fr-FR", {
                                   style: "currency",
                                   currency: "EUR",
                                   minimumFractionDigits: 0,
@@ -649,7 +696,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                                 fontWeight={600}
                                 color="info.main"
                               >
-                                {new Intl.NumberFormat("en-US", {
+                                {new Intl.NumberFormat("fr-FR", {
                                   style: "currency",
                                   currency: "EUR",
                                   minimumFractionDigits: 0,
