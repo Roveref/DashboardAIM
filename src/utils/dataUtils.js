@@ -148,6 +148,46 @@ export const sumBy = (data, column) => {
   }, 0);
 };
 
+
+/**
+ * Calculates revenue with segment and service line logic
+ * @param {Object} item - The opportunity item
+ * @returns {number} Calculated revenue
+ */
+const calculateRevenueWithSegmentLogic = (item) => {
+  // Check if segment code is AUTO, CLR, or IEM
+  const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
+  const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
+
+  // If special segment code, return full gross revenue
+  if (isSpecialSegmentCode) {
+    return item['Gross Revenue'] || 0;
+  }
+
+  // Check each service line (1, 2, and 3)
+  const serviceLines = [
+    { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
+    { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
+    { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
+  ];
+
+  // Calculate total allocated revenue for Operations
+  const operationsAllocation = serviceLines.reduce((total, service) => {
+    if (service.line === 'Operations') {
+      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+    }
+    return total;
+  }, 0);
+
+  // If any Operations allocation is found, return that
+  if (operationsAllocation > 0) {
+    return operationsAllocation;
+  }
+
+  // If no specific Operations allocation, return full gross revenue
+  return item['Gross Revenue'] || 0;
+};
+
 /**
  * Groups data by month and year and calculates sum for a specified column
  * @param {Array} data - The data array
@@ -179,14 +219,8 @@ export const getMonthlyYearlyTotals = (data, dateColumn, valueColumn) => {
       };
     }
 
-    const value = item[valueColumn];
-    // If we're using allocated revenue, use that. Otherwise use the original value
-    const actualValue =
-      item["Is Allocated"] && item["Allocated " + valueColumn]
-        ? item["Allocated " + valueColumn]
-        : typeof value === "number"
-        ? value
-        : 0;
+    // Use the new revenue calculation method
+    const actualValue = calculateRevenueWithSegmentLogic(item);
 
     monthlyYearlyData[monthYear].total += actualValue;
     monthlyYearlyData[monthYear].count += 1;
