@@ -231,7 +231,7 @@ const ServiceLinesTab = ({
             label || payload[0].name
           }`}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {`Revenue: ${new Intl.NumberFormat("en-US", {
+            {`Revenue: ${new Intl.NumberFormat("fr-FR", {
               style: "currency",
               currency: "EUR",
               minimumFractionDigits: 0,
@@ -257,7 +257,7 @@ const ServiceLinesTab = ({
         <Card sx={{ p: 1, backgroundColor: "white", border: "1px solid #ccc" }}>
           <Typography variant="body2">{data.name}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {`Revenue: ${new Intl.NumberFormat("en-US", {
+            {`Revenue: ${new Intl.NumberFormat("fr-FR", {
               style: "currency",
               currency: "EUR",
               minimumFractionDigits: 0,
@@ -426,7 +426,7 @@ const ServiceLinesTab = ({
                     </TableCell>
                     <TableCell align="right">{row.count}</TableCell>
                     <TableCell align="right">
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
@@ -434,7 +434,7 @@ const ServiceLinesTab = ({
                       }).format(row.revenue)}
                     </TableCell>
                     <TableCell align="right">
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
@@ -443,7 +443,7 @@ const ServiceLinesTab = ({
                     </TableCell>
                     <TableCell align="right">{row.pipelineCount}</TableCell>
                     <TableCell align="right">
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
@@ -452,7 +452,7 @@ const ServiceLinesTab = ({
                     </TableCell>
                     <TableCell align="right">{row.bookingCount}</TableCell>
                     <TableCell align="right">
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("fr-FR", {
                         style: "currency",
                         currency: "EUR",
                         minimumFractionDigits: 0,
@@ -483,7 +483,7 @@ const ServiceLinesTab = ({
               <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
               <YAxis
                 tickFormatter={(value) =>
-                  new Intl.NumberFormat("en-US", {
+                  new Intl.NumberFormat("fr-FR", {
                     style: "currency",
                     currency: "EUR",
                     notation: "compact",
