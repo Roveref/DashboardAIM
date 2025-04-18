@@ -26,6 +26,8 @@ import InfoIcon from "@mui/icons-material/Info";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import FilterListOffIcon from "@mui/icons-material/FilterListOff";
+import MeetingMinutes from "./MeetingMinutes"; // Import the meeting minutes component
+import OpportunityActions from "./OpportunityActions"; // Import the actions component
 
 // Status colors mapping
 const statusColors = {
@@ -46,7 +48,6 @@ const statusText = {
   14: "Booked",
   15: "Lost",
 };
-
 
 // Revenue calculation function to match previous implementation
 const calculateRevenueWithSegmentLogic = (item) => {
@@ -83,7 +84,6 @@ const calculateRevenueWithSegmentLogic = (item) => {
   return item['Gross Revenue'] || 0;
 };
 
-
 // Row component with expandable details
 const OpportunityRow = ({ row, isSelected, onRowClick }) => {
   const [open, setOpen] = useState(false);
@@ -99,7 +99,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
         sx={{
           "&:last-child td, &:last-child th": { border: 0 },
           cursor: "pointer",
-          transition: "background-color 0.2s",
+          transition: "all 0.2s ease",
           "&.Mui-selected": {
             backgroundColor: alpha(theme.palette.primary.main, 0.08),
             "&:hover": {
@@ -108,6 +108,8 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
           },
           "&:hover": {
             backgroundColor: alpha(theme.palette.primary.main, 0.04),
+            transform: "translateY(-1px)",
+            boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.05)}`,
           },
         }}
       >
@@ -122,8 +124,12 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
               event.stopPropagation();
               setOpen(!open);
             }}
+            sx={{
+              transition: 'transform 0.2s',
+              transform: open ? 'rotate(-180deg)' : 'rotate(0)',
+            }}
           >
-            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+            <KeyboardArrowDownIcon />
           </IconButton>
         </TableCell>
         <TableCell
@@ -164,7 +170,10 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
             color={statusColors[row["Status"]] || "default"}
             size="small"
             variant="filled"
-            sx={{ fontWeight: 500 }}
+            sx={{ 
+              fontWeight: 500,
+              boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.1)}`,
+            }}
           />
         </TableCell>
         <TableCell
@@ -239,7 +248,14 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
       </TableRow>
       <TableRow>
         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
+          <Collapse 
+            in={open} 
+            timeout="auto" 
+            unmountOnExit
+            sx={{
+              transition: 'all 0.3s ease !important',
+            }}
+          >
             <Box sx={{ m: 2 }}>
               <Card
                 variant="outlined"
@@ -248,17 +264,24 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                   backgroundColor: alpha(theme.palette.background.paper, 0.7),
                   border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
                   overflow: "hidden",
-                  boxShadow: `0 4px 12px ${alpha(
+                  boxShadow: `0 4px 20px ${alpha(
                     theme.palette.primary.main,
                     0.08
                   )}`,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    boxShadow: `0 6px 24px ${alpha(
+                      theme.palette.primary.main,
+                      0.12
+                    )}`,
+                  }
                 }}
               >
                 {/* Opportunity Title Banner */}
                 <Box
                   sx={{
                     p: 2.5,
-                    bgcolor: alpha(theme.palette.primary.main, 0.04),
+                    bgcolor: alpha(theme.palette.primary.main, 0.06),
                     borderBottom: `1px solid ${alpha(
                       theme.palette.primary.main,
                       0.1
@@ -266,6 +289,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    backgroundImage: `linear-gradient(to right, ${alpha(theme.palette.primary.light, 0.1)}, ${alpha(theme.palette.primary.main, 0.04)})`
                   }}
                 >
                   <Box>
@@ -287,7 +311,12 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                     }
                     color={statusColors[row["Status"]] || "default"}
                     size="medium"
-                    sx={{ fontWeight: 600, px: 1 }}
+                    sx={{ 
+                      fontWeight: 600, 
+                      px: 1,
+                      boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.1)}`,
+                      borderRadius: '8px',
+                    }}
                   />
                 </Box>
 
@@ -295,7 +324,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                 <Box
                   sx={{
                     p: 2.5,
-                    bgcolor: alpha(theme.palette.primary.main, 0.02),
+                    bgcolor: alpha(theme.palette.primary.main, 0.03),
                     borderBottom: `1px solid ${alpha(
                       theme.palette.primary.main,
                       0.1
@@ -346,6 +375,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        boxShadow: `0 2px 8px ${alpha(theme.palette.secondary.main, 0.1)}`,
                       }}
                     >
                       <Box>
@@ -412,6 +442,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                           xs: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
                           md: "none",
                         },
+                        backgroundColor: alpha(theme.palette.background.default, 0.3),
                       }}
                     >
                       <Typography
@@ -492,6 +523,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                           xs: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
                           md: "none",
                         },
+                        background: alpha(theme.palette.background.paper, 0.6),
                       }}
                     >
                       <Typography
@@ -529,6 +561,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                             p: 0.75,
                             borderRadius: 1,
                             bgcolor: alpha(theme.palette.primary.main, 0.05),
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.08)}`,
                           }}
                         >
                           <Box sx={{ display: "flex", alignItems: "center" }}>
@@ -595,6 +628,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                                   theme.palette.secondary.main,
                                   0.05
                                 ),
+                                border: `1px solid ${alpha(theme.palette.secondary.main, 0.08)}`,
                               }}
                             >
                               <Box
@@ -663,6 +697,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                                 p: 0.75,
                                 borderRadius: 1,
                                 bgcolor: alpha(theme.palette.info.main, 0.05),
+                                border: `1px solid ${alpha(theme.palette.info.main, 0.08)}`,
                               }}
                             >
                               <Box
@@ -754,7 +789,10 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                     </Grid>
 
                     {/* Team Information - Right Column */}
-                    <Grid item xs={12} md={4} sx={{ p: 2.5 }}>
+                    <Grid item xs={12} md={4} sx={{ 
+                      p: 2.5,
+                      backgroundColor: alpha(theme.palette.background.default, 0.3),
+                    }}>
                       <Typography
                         variant="subtitle2"
                         color="info.main"
@@ -816,6 +854,20 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                       </Grid>
                     </Grid>
                   </Grid>
+                  
+                  {/* Add the OpportunityActions component here with the opportunity details */}
+                  <OpportunityActions 
+                    opportunityId={row["Opportunity ID"]} 
+                    opportunityName={row["Opportunity"]}
+                    opportunityDetails={{
+                      EM: row["EM"],
+                      EP: row["EP"],
+                      Account: row["Account"],
+                      Status: statusText[row["Status"]] || `Status ${row["Status"]}`,
+                      Revenue: row["Gross Revenue"],
+                      ServiceLine: row["Service Line 1"]
+                    }}
+                  />
                 </CardContent>
               </Card>
             </Box>
@@ -965,8 +1017,9 @@ const OpportunityList = ({
           )}
         </Box>
 
-        {/* Fixed-width container for filter controls */}
+        {/* Control area with filter reset and meeting minutes */}
         <Box sx={{ display: "flex", alignItems: "center" }}>
+          {/* Filter reset button */}
           <Box
             sx={{
               width: 110, // Fixed width that accommodates the largest content
@@ -974,6 +1027,7 @@ const OpportunityList = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              mr: 1
             }}
           >
             {isFiltered && resetFilterCallback ? (
@@ -1011,6 +1065,9 @@ const OpportunityList = ({
               </Box>
             )}
           </Box>
+          
+          {/* Meeting Minutes button - only show when there's data */}
+          {data.length > 0 && <MeetingMinutes />}
 
           <Tooltip title="Click on rows to select. Expand rows for more details.">
             <InfoIcon color="action" fontSize="small" sx={{ ml: 1 }} />
