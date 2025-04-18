@@ -306,10 +306,7 @@ const JobcodeTimelineTab = ({
           parseInt(yearPart),
           parseInt(monthPart),
           1
-        ).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "short",
-        }),
+        ).toLocaleDateString('fr-FR'),
       };
     });
 
@@ -334,11 +331,7 @@ const JobcodeTimelineTab = ({
 
   // Format date to readable string
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return new Date(date).toLocaleDateString('fr-FR');
   };
 
   // Function to get timeline dot color based on item type
@@ -390,7 +383,7 @@ const JobcodeTimelineTab = ({
 
   // Helper to format currency values
   const formatCurrency = (value) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("fr-FR", {
       style: "currency",
       currency: "EUR",
       minimumFractionDigits: 0,
@@ -897,10 +890,7 @@ const JobcodeTimelineTab = ({
                             marker.position % 25 === 0 ? "block" : "none", // Only show at 0, 25, 50, 75, 100
                         }}
                       >
-                        {new Date(marker.date).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {new Date(marker.date).toLocaleDateString('fr-FR')}
                       </Typography>
                       <Box
                         sx={{
@@ -1437,10 +1427,7 @@ const JobcodeTimelineTab = ({
                                     pointerEvents: "none",
                                   }}
                                 >
-                                  {event.date.toLocaleDateString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                  })}
+                                  {event.date.toLocaleDateString('fr-FR')}
                                 </Typography>
                               </Box>
                             );
