@@ -305,7 +305,7 @@ const formatDate = (dateStr) => {
       return dateStr;
     }
 
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('fr-FR');
   } catch (e) {
     return dateStr;
   }
