@@ -55,6 +55,21 @@ import {
 } from "../utils/dataUtils";
 
 const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
+  // Debugging function to log opportunity details
+  const logOpportunityDetails = (opportunities, type) => {
+    console.log(`--- ${type} Opportunities ---`);
+    opportunities.forEach((opp, index) => {
+      console.log(`Opportunity ${index + 1}:`, {
+        ID: opp["Opportunity ID"],
+        Status: opp["Status"],
+        "Last Status Change Date": opp["Last Status Change Date"],
+        "Gross Revenue": opp["Gross Revenue"],
+        "Year of Last Status Change": opp["Last Status Change Date"] 
+          ? new Date(opp["Last Status Change Date"]).getFullYear() 
+          : "N/A"
+      });
+    });
+  };
   const [periodRange, setPeriodRange] = useState([0, 100]);
 
   // Generate timeline marks for the slider that correspond to month beginnings
@@ -329,13 +344,19 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     const year = yearMatch[1];
 
     // Get the opportunities for this month and year
-    const opps = clickedItem[`${year}Opps`] || [];
+     // Only consider opportunities in 2025
+     const opps = (clickedItem[`${year}Opps`] || []).filter(
+      (opp) => 
+        opp["Status"] === 14 && // Booked opportunities
+        new Date(opp["Last Status Change Date"]).getFullYear() === 2025
+    );
 
     if (opps.length > 0) {
       setFilteredOpportunities(opps);
     }
   };
 
+  
   const handleDateChange = (index, date) => {
     const newDateRange = [...dateRange];
     newDateRange[index] = date;
@@ -516,74 +537,85 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     );
   }
 
+
   // Filter for 2025 bookings
-  const bookings2025 = filteredOpportunities.filter(
-    (item) =>
-      item["Status"] === 14 &&
-      new Date(item["Last Status Change Date"]).getFullYear() === 2025
-  );
+   // Filter for 2025 bookings based on filtered opportunities
+  // Filter for 2025 bookings 
+  // Status 14 (Booked) AND Winning Date in 2025
+   // Filter for 2025 bookings 
+  // Status 14 (Booked) AND Last Status Change Date in 2025
+  // Simplified Bookings 2025 and Losses 2025 calculations
+// Custom revenue calculation function
+const calculateRevenueWithSegmentLogic = (item) => {
+  // Check if segment code is AUTO, CLR, or IEM
+  const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
+  const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
 
-  // Filter for 2025 losses
-  const losses2025 = filteredOpportunities.filter(
-    (item) =>
-      item["Status"] === 15 &&
-      new Date(item["Last Status Change Date"]).getFullYear() === 2025
-  );
+  // If special segment code, return full gross revenue
+  if (isSpecialSegmentCode) {
+    return item['Gross Revenue'] || 0;
+  }
 
-  // Get total revenue for 2025 bookings
-  const bookings2025Revenue = sumBy(bookings2025, (item) => {
-    // Check if allocation exists and is meaningful
-    if (item["Is Allocated"] && item["Allocated Gross Revenue"] > 0) {
-      return item["Allocated Gross Revenue"];
+  // Check each service line (1, 2, and 3)
+  const serviceLines = [
+    { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
+    { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
+    { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
+  ];
+
+  // Calculate total allocated revenue for Operations
+  const operationsAllocation = serviceLines.reduce((total, service) => {
+    if (service.line === 'Operations') {
+      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
     }
-    // Fallback to Gross Revenue if no meaningful allocation
-    return item["Gross Revenue"] || 0;
-  });
+    return total;
+  }, 0);
 
-  // Get total revenue for 2025 losses
-  const losses2025Revenue = sumBy(losses2025, (item) => {
-    // Check if allocation exists and is meaningful
-    if (item["Is Allocated"] && item["Allocated Gross Revenue"] > 0) {
-      return item["Allocated Gross Revenue"];
-    }
-    // Fallback to Gross Revenue if no meaningful allocation
-    return item["Gross Revenue"] || 0;
-  });
+  // If any Operations allocation is found, return that
+  if (operationsAllocation > 0) {
+    return operationsAllocation;
+  }
 
-  // Calculate average booking size for 2025
-  const averageBookingSize2025 =
-    bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
+  // If no specific Operations allocation, return full gross revenue
+  return item['Gross Revenue'] || 0;
+};
 
-  // All 2025 bookings for total card comparison
-  const allBookings2025 = data.filter(
-    (item) =>
-      item["Status"] === 14 &&
-      new Date(item["Last Status Change Date"]).getFullYear() === 2025
-  );
+// Bookings 2025 calculation with new revenue logic
+const bookings2025 = data.filter(
+  (item) =>
+    item['Status'] === 14 &&
+    item['Last Status Change Date'] &&
+    new Date(item['Last Status Change Date']).getFullYear() === 2025
+);
 
-  // All 2025 losses for total card comparison
-  const allLosses2025 = data.filter(
-    (item) =>
-      item["Status"] === 15 &&
-      new Date(item["Last Status Change Date"]).getFullYear() === 2025
-  );
+const losses2025 = data.filter(
+  (item) =>
+    item["Status"] === 15 &&
+    item["Last Status Change Date"] &&
+    new Date(item["Last Status Change Date"]).getFullYear() === 2025
+);
 
-  // Get total revenue for all 2025 bookings
-  const allBookings2025Revenue = sumBy(allBookings2025, "Gross Revenue");
+// Calculate revenues with new logic
+const bookings2025Revenue = bookings2025.reduce(
+  (sum, item) => sum + calculateRevenueWithSegmentLogic(item), 
+  0
+);
 
-  // Get total revenue for all 2025 losses
-  const allLosses2025Revenue = sumBy(allLosses2025, "Gross Revenue");
+const losses2025Revenue = losses2025.reduce(
+  (sum, item) => sum + (item["Gross Revenue"] || 0), 
+  0
+);
 
-  // Calculate average booking size for all 2025 bookings
-  const allAverageBookingSize2025 =
-    allBookings2025.length > 0
-      ? allBookings2025Revenue / allBookings2025.length
-      : 0;
+// Calculate average booking size
+const averageBookingSize2025 = 
+  bookings2025.length > 0 
+    ? bookings2025Revenue / bookings2025.length 
+    : 0;
 
-  return (
+
+    return (
     <Fade in={!loading} timeout={500}>
       <Box sx={{ width: "100%" }}>
-        {/* Updated Calculation Logic for Allocation */}
         <Grid
           container
           spacing={3}
@@ -618,17 +650,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 <Typography variant="body2" color="text.secondary">
                   Total Bookings 2025
                 </Typography>
-
-                <Chip
-                  label={`${bookings2025.length} opps`}
-                  color="primary"
-                  size="small"
-                  sx={{
-                    height: 22,
-                    fontSize: "0.675rem",
-                    fontWeight: 600,
-                  }}
-                />
               </Box>
 
               <Box
@@ -653,18 +674,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                       maximumFractionDigits: 0,
                     }).format(bookings2025Revenue)}
                   </Typography>
-                  {filteredOpportunities.length !== data.length && (
-                    <Typography variant="caption" color="text.secondary">
-                      (Total:{" "}
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(allBookings2025Revenue)}
-                      )
-                    </Typography>
-                  )}
                 </Box>
               </Box>
 
@@ -692,9 +701,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={600}
                     sx={{ mr: 1 }}
                   >
-                    {filteredOpportunities.length !== data.length
+                    {selectedOpportunities.length > 0
                       ? `${Math.round(
-                          (bookings2025.length / allBookings2025.length) * 100
+                          (bookings2025.length / 
+                            data.filter(
+                              (item) =>
+                                item["Status"] === 14 &&
+                                new Date(item["Last Status Change Date"]).getFullYear() === 2025
+                            ).length) * 100
                         )}%`
                       : "100%"}{" "}
                     vs total
@@ -731,17 +745,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 <Typography variant="body2" color="text.secondary">
                   Total Lost 2025
                 </Typography>
-
-                <Chip
-                  label={`${losses2025.length} opps`}
-                  color="error"
-                  size="small"
-                  sx={{
-                    height: 22,
-                    fontSize: "0.675rem",
-                    fontWeight: 600,
-                  }}
-                />
               </Box>
 
               <Box
@@ -766,18 +769,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                       maximumFractionDigits: 0,
                     }).format(losses2025Revenue)}
                   </Typography>
-                  {filteredOpportunities.length !== data.length && (
-                    <Typography variant="caption" color="text.secondary">
-                      (Total:{" "}
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(allLosses2025Revenue)}
-                      )
-                    </Typography>
-                  )}
                 </Box>
               </Box>
 
@@ -805,10 +796,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={600}
                     sx={{ mr: 1 }}
                   >
-                    {filteredOpportunities.length !== data.length &&
-                    allLosses2025.length > 0
+                    {selectedOpportunities.length > 0
                       ? `${Math.round(
-                          (losses2025.length / allLosses2025.length) * 100
+                          (losses2025.length / 
+                            data.filter(
+                              (item) =>
+                                item["Status"] === 15 &&
+                                new Date(item["Last Status Change Date"]).getFullYear() === 2025
+                            ).length) * 100
                         )}%`
                       : "100%"}{" "}
                     vs total
@@ -845,17 +840,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                 <Typography variant="body2" color="text.secondary">
                   Average Booking Size 2025
                 </Typography>
-
-                <Chip
-                  label={`${bookings2025.length} opps`}
-                  color="secondary"
-                  size="small"
-                  sx={{
-                    height: 22,
-                    fontSize: "0.675rem",
-                    fontWeight: 600,
-                  }}
-                />
               </Box>
 
               <Box
@@ -880,18 +864,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                       maximumFractionDigits: 0,
                     }).format(averageBookingSize2025)}
                   </Typography>
-                  {filteredOpportunities.length !== data.length && (
-                    <Typography variant="caption" color="text.secondary">
-                      (Total:{" "}
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(allAverageBookingSize2025)}
-                      )
-                    </Typography>
-                  )}
                 </Box>
               </Box>
 
@@ -913,11 +885,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                         maximumFractionDigits: 0,
                       }).format(
                         Math.min(
-                          ...bookings2025.map((opp) =>
-                            opp["Allocated Gross Revenue"] > 0
-                              ? opp["Allocated Gross Revenue"]
-                              : opp["Gross Revenue"] || 0
-                          )
+                          ...bookings2025.map((opp) => opp["Gross Revenue"] || 0)
                         )
                       )}{" "}
                       -
@@ -928,11 +896,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                         maximumFractionDigits: 0,
                       }).format(
                         Math.max(
-                          ...bookings2025.map((opp) =>
-                            opp["Allocated Gross Revenue"] > 0
-                              ? opp["Allocated Gross Revenue"]
-                              : opp["Gross Revenue"] || 0
-                          )
+                          ...bookings2025.map((opp) => opp["Gross Revenue"] || 0)
                         )
                       )}
                     </>
@@ -954,10 +918,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
                     fontWeight={600}
                     sx={{ mr: 1 }}
                   >
-                    {filteredOpportunities.length !== data.length &&
-                    allBookings2025.length > 0
+                    {selectedOpportunities.length > 0
                       ? `${Math.round(
-                          (bookings2025.length / allBookings2025.length) * 100
+                          (bookings2025.length / 
+                            data.filter(
+                              (item) =>
+                                item["Status"] === 14 &&
+                                new Date(item["Last Status Change Date"]).getFullYear() === 2025
+                            ).length) * 100
                         )}%`
                       : "100%"}{" "}
                     vs total
