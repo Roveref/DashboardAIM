@@ -36,6 +36,10 @@ import { processExcelData, getUniqueValues } from "./utils/dataUtils";
 import theme from "./theme";
 import JobcodeTimelineTab from "./components/JobcodeTimelineTab";
 
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
+import DownloadIcon from "@mui/icons-material/Download";
+
 // Sidebar width definition
 const LEFT_DRAWER_WIDTH = 240;
 const RIGHT_DRAWER_WIDTH = 240;
