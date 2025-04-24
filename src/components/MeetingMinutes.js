@@ -41,7 +41,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
 
-const MeetingMinutes = () => {
+const MeetingMinutes = ({ id }) => {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const [allActions, setAllActions] = useState([]);
@@ -52,7 +52,7 @@ const MeetingMinutes = () => {
     summary: '',
   });
   const [includeCompleted, setIncludeCompleted] = useState(true);
-  const [actionsByOpportunity, setActionsByOpportunity] = useState({});
+  const [actionsByClient, setActionsByClient] = useState({});
   const [activeStep, setActiveStep] = useState(0);
 
   // Load all actions from localStorage when dialog opens
@@ -61,9 +61,9 @@ const MeetingMinutes = () => {
       const actions = getAllOpportunityActions();
       setAllActions(actions);
 
-      // Group actions by opportunity
-      const grouped = groupActionsByOpportunity(actions);
-      setActionsByOpportunity(grouped);
+      // Group actions by client first, then by opportunity
+      const groupedByClient = groupActionsByClient(actions);
+      setActionsByClient(groupedByClient);
     }
   }, [open]);
 
@@ -104,16 +104,26 @@ const MeetingMinutes = () => {
     return allActions;
   };
 
-  // Group actions by opportunity name
-  const groupActionsByOpportunity = (actions) => {
-    return actions.reduce((acc, action) => {
+  // Group actions by client first, then by opportunity
+  const groupActionsByClient = (actions) => {
+    const groupedByClient = {};
+    
+    actions.forEach(action => {
+      const clientName = action.opportunityAccount || 'Unknown Client';
       const oppName = action.opportunityName || `Opportunity ${action.opportunityId}`;
-      if (!acc[oppName]) {
-        acc[oppName] = [];
+      
+      if (!groupedByClient[clientName]) {
+        groupedByClient[clientName] = {};
       }
-      acc[oppName].push(action);
-      return acc;
-    }, {});
+      
+      if (!groupedByClient[clientName][oppName]) {
+        groupedByClient[clientName][oppName] = [];
+      }
+      
+      groupedByClient[clientName][oppName].push(action);
+    });
+    
+    return groupedByClient;
   };
 
   // Format date for better display
@@ -137,6 +147,9 @@ const MeetingMinutes = () => {
       ? allActions 
       : allActions.filter(action => action.status === 'open');
     
+    // Group filtered actions by client
+    const filteredGroupedByClient = groupActionsByClient(filteredActions);
+    
     // Create the minutes document content
     let minutes = `# ${meetingDetails.title}\n`;
     minutes += `Date: ${formatDate(meetingDetails.date)}\n\n`;
@@ -149,27 +162,28 @@ const MeetingMinutes = () => {
       minutes += `## Meeting Summary\n${meetingDetails.summary}\n\n`;
     }
     
-    minutes += `## Action Items\n\n`;
+    minutes += `## Action Items By Client\n\n`;
     
-    // Add action items grouped by opportunity
-    Object.entries(actionsByOpportunity).forEach(([oppName, oppActions]) => {
-      // Filter actions based on completion status if needed
-      const filteredOppActions = includeCompleted 
-        ? oppActions 
-        : oppActions.filter(action => action.status === 'open');
+    // Add action items grouped by client then opportunity
+    Object.entries(filteredGroupedByClient).forEach(([clientName, opportunities]) => {
+      minutes += `### Client: ${clientName}\n\n`;
       
-      if (filteredOppActions.length > 0) {
+      // Iterate through each opportunity for this client
+      Object.entries(opportunities).forEach(([oppName, oppActions]) => {
         // Use the first action to get opportunity details
-        const firstAction = filteredOppActions[0];
+        const firstAction = oppActions[0];
         
-        minutes += `### ${oppName}\n\n`;
+        minutes += `#### ${oppName}\n\n`;
         
-        // Add opportunity details including ID, EM and EP
+        // Add opportunity details including ID, EM, EP, Manager, Partner and Status
         minutes += `**Opportunity ID:** ${firstAction.opportunityId || 'N/A'}\n`;
+        minutes += `**Status:** ${firstAction.opportunityStatus || 'N/A'}\n`;
         minutes += `**Engagement Manager:** ${firstAction.opportunityEM || 'N/A'}\n`;
-        minutes += `**Engagement Partner:** ${firstAction.opportunityEP || 'N/A'}\n\n`;
+        minutes += `**Engagement Partner:** ${firstAction.opportunityEP || 'N/A'}\n`;
+        minutes += `**Manager:** ${firstAction.opportunityManager || 'N/A'}\n`;
+        minutes += `**Partner:** ${firstAction.opportunityPartner || 'N/A'}\n\n`;
         
-        filteredOppActions.forEach(action => {
+        oppActions.forEach(action => {
           const priorityLabels = {
             'high': '🔴 High',
             'medium': '🟠 Medium',
@@ -184,12 +198,16 @@ const MeetingMinutes = () => {
           minutes += `  - Priority: ${priorityText}\n`;
           minutes += `\n`;
         });
-      }
+      });
     });
     
     // Add general statistics
     minutes += `## Meeting Statistics\n\n`;
-    minutes += `- Total Opportunities Reviewed: ${Object.keys(actionsByOpportunity).length}\n`;
+    minutes += `- Total Clients Reviewed: ${Object.keys(filteredGroupedByClient).length}\n`;
+    minutes += `- Total Opportunities Reviewed: ${Object.keys(filteredActions.reduce((acc, action) => {
+      acc[action.opportunityId] = true;
+      return acc;
+    }, {})).length}\n`;
     minutes += `- Total Action Items: ${filteredActions.length}\n`;
     
     const openActions = filteredActions.filter(a => a.status === 'open').length;
@@ -203,7 +221,7 @@ const MeetingMinutes = () => {
     if (highPriorityActions.length > 0) {
       minutes += `\n## High Priority Action Items Summary\n\n`;
       highPriorityActions.forEach(action => {
-        minutes += `- **${action.description}** (${action.opportunityName})\n`;
+        minutes += `- **${action.description}** (Client: ${action.opportunityAccount || 'Unknown'}, ${action.opportunityName})\n`;
         minutes += `  - Owner: ${action.owner}, Due: ${formatDate(action.dueDate)}\n`;
       });
     }
@@ -233,13 +251,9 @@ const MeetingMinutes = () => {
     handleNext(); // Move to the confirmation step
   };
 
-  // Count the total actions across all opportunities
+  // Count the total actions across all opportunities and clients
   const countTotalActions = () => {
-    let count = 0;
-    for (const opportunity in actionsByOpportunity) {
-      count += actionsByOpportunity[opportunity].length;
-    }
-    return count;
+    return allActions.length;
   };
 
   // Get priority color
@@ -273,7 +287,18 @@ const MeetingMinutes = () => {
               </Typography>
             </Box>
             
-            <Paper sx={{ p: 3, mb: 3, bgcolor: alpha(theme.palette.primary.main, 0.05), borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <Paper sx={{ 
+              p: 3, 
+              mb: 3, 
+              bgcolor: alpha(theme.palette.primary.main, 0.05), 
+              borderRadius: 2, 
+              boxShadow: theme.shadows[3],
+              transition: "all 0.3s",
+              "&:hover": {
+                boxShadow: theme.shadows[6],
+                transform: "translateY(-2px)",
+              }
+            }}>
               <Typography variant="subtitle1" gutterBottom fontWeight={600}>
                 Meeting Details
               </Typography>
@@ -359,14 +384,23 @@ const MeetingMinutes = () => {
               <Box sx={{ mb: 3, mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <Chip 
                   icon={<BusinessIcon />} 
-                  label={`${Object.keys(actionsByOpportunity).length} Opportunities`} 
+                  label={`${Object.keys(actionsByClient).length} Clients`} 
                   color="primary" 
+                  variant="outlined" 
+                />
+                <Chip 
+                  icon={<BusinessIcon />} 
+                  label={`${Object.keys(allActions.reduce((acc, action) => {
+                    acc[action.opportunityId] = true;
+                    return acc;
+                  }, {})).length} Opportunities`} 
+                  color="secondary" 
                   variant="outlined" 
                 />
                 <Chip 
                   icon={<AssignmentIcon />} 
                   label={`${countTotalActions()} Total Actions`} 
-                  color="secondary" 
+                  color="info" 
                   variant="outlined" 
                 />
                 <Chip 
@@ -385,32 +419,37 @@ const MeetingMinutes = () => {
             <Divider sx={{ mb: 2 }} />
             
             <Typography variant="subtitle1" gutterBottom fontWeight={600}>
-              Actions by Opportunity
+              Actions by Client
             </Typography>
             
-            {Object.keys(actionsByOpportunity).length > 0 ? (
+            {Object.keys(actionsByClient).length > 0 ? (
               <List sx={{ 
                 maxHeight: '300px', 
                 overflow: 'auto',
                 border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
                 borderRadius: 2,
                 bgcolor: alpha(theme.palette.background.paper, 0.5),
-                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
+                boxShadow: theme.shadows[3],
+                transition: "all 0.3s",
+                "&:hover": {
+                  boxShadow: theme.shadows[6],
+                  transform: "translateY(-2px)",
+                }
               }}>
-                {Object.entries(actionsByOpportunity).map(([oppName, actions]) => {
-                  // Get EM and EP from first action
-                  const firstAction = actions[0];
-                  const em = firstAction?.opportunityEM;
-                  const ep = firstAction?.opportunityEP;
+                {Object.entries(actionsByClient).map(([clientName, opportunities]) => {
+                  const clientActions = Object.values(opportunities).flat();
+                  const totalOpenActions = clientActions.filter(a => a.status === 'open').length;
+                  const totalHighPriorityActions = clientActions.filter(a => a.priority === 'high' && a.status === 'open').length;
                   
                   return (
-                    <React.Fragment key={oppName}>
+                    <React.Fragment key={clientName}>
                       <ListItem sx={{ 
                         px: 2, 
                         py: 1.5,
                         borderLeft: `4px solid ${theme.palette.primary.main}`,
+                        bgcolor: alpha(theme.palette.primary.main, 0.04),
                         '&:hover': {
-                          bgcolor: alpha(theme.palette.primary.main, 0.04)
+                          bgcolor: alpha(theme.palette.primary.main, 0.08)
                         }
                       }}>
                         <ListItemText
@@ -418,86 +457,127 @@ const MeetingMinutes = () => {
                             <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                               <BusinessIcon fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
                               <Typography variant="body2" fontWeight={600}>
-                                {oppName}
-                              </Typography>
-                              <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
-                                (ID: {firstAction?.opportunityId || 'N/A'})
+                                Client: {clientName}
                               </Typography>
                             </Box>
                           }
                           secondary={
                             <Box sx={{ mt: 1 }}>
-                              <Grid container spacing={1} sx={{ alignItems: 'center' }}>
-                                {em && (
-                                  <Grid item xs={12} sm={6}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                      <Avatar 
-                                        sx={{ 
-                                          width: 24, 
-                                          height: 24, 
-                                          fontSize: '0.75rem',
-                                          bgcolor: theme.palette.primary.main,
-                                          mr: 1
-                                        }}
-                                      >
-                                        {getInitials(em)}
-                                      </Avatar>
-                                      <Typography variant="caption" color="text.secondary">
-                                        EM: <b>{em}</b>
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-                                )}
-                                
-                                {ep && (
-                                  <Grid item xs={12} sm={6}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                      <Avatar 
-                                        sx={{ 
-                                          width: 24, 
-                                          height: 24, 
-                                          fontSize: '0.75rem',
-                                          bgcolor: theme.palette.secondary.main,
-                                          mr: 1
-                                        }}
-                                      >
-                                        {getInitials(ep)}
-                                      </Avatar>
-                                      <Typography variant="caption" color="text.secondary">
-                                        EP: <b>{ep}</b>
-                                      </Typography>
-                                    </Box>
-                                  </Grid>
-                                )}
-                              </Grid>
+                              <Typography variant="caption" color="text.secondary">
+                                {Object.keys(opportunities).length} opportunities, {clientActions.length} action items
+                              </Typography>
                               
                               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                                 <Chip 
-                                  label={`${actions.length} action${actions.length !== 1 ? 's' : ''}`}
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                  sx={{ height: 20, fontSize: '0.7rem' }}
-                                />
-                                <Chip 
-                                  label={`${actions.filter(a => a.status === 'open').length} open`}
+                                  label={`${totalOpenActions} open action${totalOpenActions !== 1 ? 's' : ''}`}
                                   size="small"
                                   variant="outlined"
                                   color="info"
                                   sx={{ height: 20, fontSize: '0.7rem' }}
                                 />
-                                <Chip 
-                                  label={`${actions.filter(a => a.priority === 'high' && a.status === 'open').length} high priority`}
-                                  size="small"
-                                  variant="outlined"
-                                  color="error"
-                                  sx={{ height: 20, fontSize: '0.7rem' }}
-                                />
+                                {totalHighPriorityActions > 0 && (
+                                  <Chip 
+                                    label={`${totalHighPriorityActions} high priority`}
+                                    size="small"
+                                    variant="outlined"
+                                    color="error"
+                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                  />
+                                )}
                               </Box>
                             </Box>
                           }
                         />
                       </ListItem>
+                      
+                      {/* List opportunities under this client */}
+                      {Object.entries(opportunities).map(([oppName, oppActions]) => {
+                        // Get the first action to extract opportunity details
+                        const firstAction = oppActions[0];
+                        
+                        return (
+                          <ListItem key={oppName} sx={{ 
+                            pl: 4, 
+                            pr: 2,
+                            py: 1,
+                            borderLeft: `2px solid ${theme.palette.secondary.main}`,
+                            ml: 2,
+                            bgcolor: alpha(theme.palette.background.paper, 0.5)
+                          }}>
+                            <ListItemText
+                              primary={
+                                <Typography variant="body2" fontWeight={500}>
+                                  {oppName} ({firstAction.opportunityStatus})
+                                </Typography>
+                              }
+                              secondary={
+                                <Box sx={{ mt: 0.5 }}>
+                                  <Grid container spacing={1} sx={{ alignItems: 'center' }}>
+                                    {firstAction.opportunityEM && firstAction.opportunityEM !== 'N/A' && (
+                                      <Grid item xs={12} sm={6}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                          <Avatar 
+                                            sx={{ 
+                                              width: 20, 
+                                              height: 20, 
+                                              fontSize: '0.6rem',
+                                              bgcolor: theme.palette.primary.main,
+                                              mr: 0.5
+                                            }}
+                                          >
+                                            {getInitials(firstAction.opportunityEM)}
+                                          </Avatar>
+                                          <Typography variant="caption" color="text.secondary">
+                                            EM: <b>{firstAction.opportunityEM}</b>
+                                          </Typography>
+                                        </Box>
+                                      </Grid>
+                                    )}
+                                    
+                                    {firstAction.opportunityEP && firstAction.opportunityEP !== 'N/A' && (
+                                      <Grid item xs={12} sm={6}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                          <Avatar 
+                                            sx={{ 
+                                              width: 20, 
+                                              height: 20, 
+                                              fontSize: '0.6rem',
+                                              bgcolor: theme.palette.secondary.main,
+                                              mr: 0.5
+                                            }}
+                                          >
+                                            {getInitials(firstAction.opportunityEP)}
+                                          </Avatar>
+                                          <Typography variant="caption" color="text.secondary">
+                                            EP: <b>{firstAction.opportunityEP}</b>
+                                          </Typography>
+                                        </Box>
+                                      </Grid>
+                                    )}
+                                  </Grid>
+                                  
+                                  <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                                    <Chip 
+                                      label={`${oppActions.length} action${oppActions.length !== 1 ? 's' : ''}`}
+                                      size="small"
+                                      variant="outlined"
+                                      color="secondary"
+                                      sx={{ height: 18, fontSize: '0.65rem' }}
+                                    />
+                                    <Chip 
+                                      label={`${oppActions.filter(a => a.status === 'open').length} open`}
+                                      size="small"
+                                      variant="outlined"
+                                      color="info"
+                                      sx={{ height: 18, fontSize: '0.65rem' }}
+                                    />
+                                  </Box>
+                                </Box>
+                              }
+                            />
+                          </ListItem>
+                        );
+                      })}
                       <Divider component="li" />
                     </React.Fragment>
                   );
@@ -510,7 +590,13 @@ const MeetingMinutes = () => {
                   textAlign: 'center', 
                   bgcolor: alpha(theme.palette.background.paper, 0.5),
                   border: `1px solid ${alpha(theme.palette.divider, 0.3)}`,
-                  borderRadius: 2
+                  borderRadius: 2,
+                  boxShadow: theme.shadows[3],
+                  transition: "all 0.3s",
+                  "&:hover": {
+                    boxShadow: theme.shadows[6],
+                    transform: "translateY(-2px)",
+                  }
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
@@ -522,11 +608,15 @@ const MeetingMinutes = () => {
               </Paper>
             )}
             
-            {Object.keys(actionsByOpportunity).length > 0 && (
+            {Object.keys(actionsByClient).length > 0 && (
               <Box sx={{ mt: 3, p: 2, bgcolor: alpha(theme.palette.info.main, 0.05), borderRadius: 2 }}>
                 <Typography variant="body2">
-                  Your meeting minutes will include details for {Object.keys(actionsByOpportunity).length} opportunities 
-                  with {includeCompleted ? 'all' : 'open'} action items ({includeCompleted ? countTotalActions() : allActions.filter(a => a.status === 'open').length}).
+                  Your meeting minutes will include details for {Object.keys(actionsByClient).length} clients 
+                  with {Object.keys(allActions.reduce((acc, action) => {
+                    acc[action.opportunityId] = true;
+                    return acc;
+                  }, {})).length} opportunities and {includeCompleted ? 'all' : 'open'} action items 
+                  ({includeCompleted ? countTotalActions() : allActions.filter(a => a.status === 'open').length}).
                 </Typography>
               </Box>
             )}
@@ -544,8 +634,12 @@ const MeetingMinutes = () => {
             </Typography>
             <Box sx={{ mt: 4, p: 3, bgcolor: alpha(theme.palette.success.main, 0.08), borderRadius: 2 }}>
               <Typography variant="body2">
-                The file contains information about {Object.keys(actionsByOpportunity).length} opportunities 
-                with {includeCompleted ? countTotalActions() : allActions.filter(a => a.status === 'open').length} action items.
+                The file contains information about {Object.keys(actionsByClient).length} clients
+                with {Object.keys(allActions.reduce((acc, action) => {
+                  acc[action.opportunityId] = true;
+                  return acc;
+                }, {})).length} opportunities 
+                and {includeCompleted ? countTotalActions() : allActions.filter(a => a.status === 'open').length} action items.
               </Typography>
             </Box>
           </Box>
@@ -557,17 +651,16 @@ const MeetingMinutes = () => {
 
   return (
     <>
-      <Tooltip title="Generate meeting minutes with action items from all opportunities">
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AssignmentIcon />}
-          onClick={handleOpen}
-          sx={{ ml: 1 }}
-        >
-          Meeting Minutes
-        </Button>
-      </Tooltip>
+      <Button
+        id={id}
+        variant="contained"
+        color="primary"
+        startIcon={<AssignmentIcon />}
+        onClick={handleOpen}
+        sx={{ ml: 1 }}
+      >
+        Meeting Minutes
+      </Button>
       
       <Dialog
         open={open}
@@ -631,7 +724,7 @@ const MeetingMinutes = () => {
                 onClick={handleNext}
                 variant="contained" 
                 color="primary"
-                disabled={Object.keys(actionsByOpportunity).length === 0}
+                disabled={Object.keys(actionsByClient).length === 0}
               >
                 Next
               </Button>
@@ -643,7 +736,7 @@ const MeetingMinutes = () => {
                 color="primary"
                 startIcon={<DownloadIcon />}
                 onClick={downloadMinutes}
-                disabled={Object.keys(actionsByOpportunity).length === 0}
+                disabled={Object.keys(actionsByClient).length === 0}
               >
                 Generate & Download
               </Button>
