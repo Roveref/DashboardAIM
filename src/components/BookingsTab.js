@@ -1,12 +1,3 @@
-// Format date in French format
-const formatDateFR = (date) => {
-  if (!date) return "";
-  return date.toLocaleDateString("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
 import React, { useState, useEffect } from "react";
 import {
   Grid,
@@ -24,14 +15,31 @@ import {
   useTheme,
   alpha,
   Fade,
-  Slider,
   Chip,
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  Stack,
+  InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+
 import {
   ComposedChart,
   Bar,
@@ -42,6 +50,9 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
 import OpportunityList from "./OpportunityList";
@@ -54,180 +65,599 @@ import {
   getNewLosses,
 } from "../utils/dataUtils";
 
-const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
-  // Debugging function to log opportunity details
-  const logOpportunityDetails = (opportunities, type) => {
-    console.log(`--- ${type} Opportunities ---`);
-    opportunities.forEach((opp, index) => {
-      console.log(`Opportunity ${index + 1}:`, {
-        ID: opp["Opportunity ID"],
-        Status: opp["Status"],
-        "Last Status Change Date": opp["Last Status Change Date"],
-        "Gross Revenue": opp["Gross Revenue"],
-        "Year of Last Status Change": opp["Last Status Change Date"] 
-          ? new Date(opp["Last Status Change Date"]).getFullYear() 
-          : "N/A"
-      });
-    });
-  };
-  const [periodRange, setPeriodRange] = useState([0, 100]);
+// Format date in French format
+const formatDateFR = (date) => {
+  if (!date) return "";
+  return date.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
 
-  // Generate timeline marks for the slider that correspond to month beginnings
-  const generateTimelineMarks = (startDate, endDate) => {
-    if (!startDate || !endDate) return [];
+// Custom component for the Top Accounts Section
+const TopAccountsSection = ({ data }) => {
+  const theme = useTheme();
+  const [sortConfig, setSortConfig] = useState({
+    key: "bookingAmount",
+    direction: "desc",
+  });
 
-    const marks = [];
+  // State for the top accounts data
+  const [topAccounts, setTopAccounts] = useState([]);
+  const [totalBookingsAmount, setTotalBookingsAmount] = useState(0);
+  const COLORS = [
+    theme.palette.primary.main,
+    theme.palette.secondary.main,
+    theme.palette.success.main,
+    theme.palette.warning.main,
+    theme.palette.info.main,
+    theme.palette.error.main,
+    "#8884d8",
+    "#82ca9d",
+    "#ffc658",
+    "#ff7300",
+  ];
 
-    // Create a copy of the start date and set to first of the month
-    const currentDate = new Date(startDate);
-    currentDate.setDate(1); // Set to first day of month
+  // Revenue calculation function to match previous implementation
+  const calculateRevenueWithSegmentLogic = (item) => {
+    // Check if segment code is AUTO, CLR, or IEM
+    const specialSegmentCodes = ["AUTO", "CLR", "IEM"];
+    const isSpecialSegmentCode = specialSegmentCodes.includes(
+      item["Sub Segment Code"]
+    );
 
-    // Create end date copy for calculations
-    const endDateCopy = new Date(endDate);
-    // Set to the first day of the next month to include the last month
-    endDateCopy.setMonth(endDateCopy.getMonth() + 1);
-    endDateCopy.setDate(1);
-
-    // Get the total duration in milliseconds for percentage calculations
-    const totalDuration = endDateCopy.getTime() - currentDate.getTime();
-    if (totalDuration <= 0) return [];
-
-    // Loop through each month until we reach the end date
-    while (currentDate < endDateCopy) {
-      // Calculate position percentage for this month
-      const position =
-        ((currentDate.getTime() - startDate.getTime()) / totalDuration) * 100;
-
-      // Make sure the position is within the slider range (0-100)
-      if (position >= 0 && position <= 100) {
-        // Determine label format - show year for January or if it's the first mark
-        const isYearChange = currentDate.getMonth() === 0 || marks.length === 0;
-
-        marks.push({
-          value: position,
-          label: isYearChange
-            ? currentDate.toLocaleDateString("fr-FR", {
-                month: "short",
-                year: "numeric",
-              })
-            : currentDate.toLocaleDateString("fr-FR", { month: "short" }),
-          // Store the actual date for reference
-          date: new Date(currentDate),
-        });
-      }
-
-      // Move to first day of next month
-      currentDate.setMonth(currentDate.getMonth() + 1);
+    // If special segment code, return full gross revenue
+    if (isSpecialSegmentCode) {
+      return item["Gross Revenue"] || 0;
     }
 
-    return marks;
+    // Check each service line (1, 2, and 3)
+    const serviceLines = [
+      {
+        line: item["Service Line 1"],
+        percentage: item["Service Offering 1 %"] || 0,
+      },
+      {
+        line: item["Service Line 2"],
+        percentage: item["Service Offering 2 %"] || 0,
+      },
+      {
+        line: item["Service Line 3"],
+        percentage: item["Service Offering 3 %"] || 0,
+      },
+    ];
+
+    // Calculate total allocated revenue for Operations
+    const operationsAllocation = serviceLines.reduce((total, service) => {
+      if (service.line === "Operations") {
+        return (
+          total + (item["Gross Revenue"] || 0) * (service.percentage / 100)
+        );
+      }
+      return total;
+    }, 0);
+
+    // If any Operations allocation is found, return that
+    if (operationsAllocation > 0) {
+      return operationsAllocation;
+    }
+
+    // If no specific Operations allocation, return full gross revenue
+    return item["Gross Revenue"] || 0;
   };
 
-  // Snap to month beginnings when updating date range
-  const prepareDateRange = () => {
+  useEffect(() => {
     if (!data || data.length === 0) return;
 
-    // Sort data by Last Status Change Date
-    const sortedData = [...data].sort(
-      (a, b) =>
-        new Date(a["Last Status Change Date"]) -
-        new Date(b["Last Status Change Date"])
-    );
+    // Filter to only include booked opportunities (Status 14)
+    const bookedOpportunities = data.filter((item) => item.Status === 14);
 
-    const firstDate = new Date(sortedData[0]["Last Status Change Date"]);
-    const lastDate = new Date(
-      sortedData[sortedData.length - 1]["Last Status Change Date"]
-    );
-    const totalDuration = lastDate.getTime() - firstDate.getTime();
+    // Group by account
+    const accountMap = {};
 
-    // Calculate raw start and end dates based on slider
-    const rawStart = new Date(
-      firstDate.getTime() + (totalDuration * periodRange[0]) / 100
-    );
-    const rawEnd = new Date(
-      firstDate.getTime() + (totalDuration * periodRange[1]) / 100
-    );
-
-    // Snap start date to beginning of month
-    const start = new Date(rawStart);
-    start.setDate(1);
-
-    // Snap end date to beginning of month and add a month (to include the whole month)
-    const end = new Date(rawEnd);
-    end.setDate(1);
-    if (periodRange[1] < 100) {
-      // If not at the very end
-      end.setMonth(end.getMonth() + 1);
-    }
-
-    setDateRange([start, end]);
-  };
-
-  const handlePeriodChange = (event, newValue) => {
-    setPeriodRange(newValue);
-
-    // Find matching timeline marks for the selection
-    if (data && data.length > 0) {
-      const sortedData = [...data].sort(
-        (a, b) =>
-          new Date(a["Last Status Change Date"]) -
-          new Date(b["Last Status Change Date"])
-      );
-
-      const firstDate = new Date(sortedData[0]["Last Status Change Date"]);
-      const lastDate = new Date(
-        sortedData[sortedData.length - 1]["Last Status Change Date"]
-      );
-
-      // Get all available month marks
-      const timelineMarks = generateTimelineMarks(firstDate, lastDate);
-
-      // Find closest marks to selection points
-      // This ensures we're selecting exactly at month boundaries
-      if (timelineMarks.length > 0) {
-        // Find closest mark to start position
-        const startMarkIndex = timelineMarks.reduce(
-          (closest, current, index) => {
-            const currentDiff = Math.abs(current.value - newValue[0]);
-            const closestDiff = Math.abs(
-              timelineMarks[closest].value - newValue[0]
-            );
-            return currentDiff < closestDiff ? index : closest;
-          },
-          0
-        );
-
-        // Find closest mark to end position
-        const endMarkIndex = timelineMarks.reduce((closest, current, index) => {
-          const currentDiff = Math.abs(current.value - newValue[1]);
-          const closestDiff = Math.abs(
-            timelineMarks[closest].value - newValue[1]
-          );
-          return currentDiff < closestDiff ? index : closest;
-        }, 0);
-
-        // Get the actual dates from marks
-        if (timelineMarks[startMarkIndex] && timelineMarks[endMarkIndex]) {
-          // Directly set the date range to the exact month beginnings from marks
-          setDateRange([
-            timelineMarks[startMarkIndex].date,
-            // If end mark is not the last one, increase by a month to include the whole month
-            endMarkIndex < timelineMarks.length - 1
-              ? new Date(
-                  new Date(timelineMarks[endMarkIndex + 1].date).setDate(0)
-                ) // Last day of month
-              : lastDate,
-          ]);
-        }
+    bookedOpportunities.forEach((opportunity) => {
+      const account = opportunity.Account || "Unknown";
+      if (!accountMap[account]) {
+        accountMap[account] = {
+          account: account,
+          bookingAmount: 0,
+          calculatedAmount: 0,
+          opportunityCount: 0,
+          avgBookingSize: 0,
+          opportunities: [],
+          serviceLines: new Set(),
+          // Track dates for latest booking
+          latestBookingDate: null,
+        };
       }
+
+      // Add to total amount
+      const bookingAmount = opportunity["Gross Revenue"] || 0;
+      const calculatedAmount = calculateRevenueWithSegmentLogic(opportunity);
+
+      accountMap[account].bookingAmount += bookingAmount;
+      accountMap[account].calculatedAmount += calculatedAmount;
+      accountMap[account].opportunityCount += 1;
+      accountMap[account].opportunities.push(opportunity);
+
+      // Track service lines
+      if (opportunity["Service Line 1"]) {
+        accountMap[account].serviceLines.add(opportunity["Service Line 1"]);
+      }
+
+      // Track latest booking date
+      const bookingDate = new Date(
+        opportunity["Last Status Change Date"] ||
+          opportunity["Winning Date"] ||
+          opportunity["Creation Date"]
+      );
+      if (
+        !accountMap[account].latestBookingDate ||
+        bookingDate > accountMap[account].latestBookingDate
+      ) {
+        accountMap[account].latestBookingDate = bookingDate;
+      }
+    });
+
+    // Convert to array, calculate averages and convert sets to arrays
+    const accountsArray = Object.values(accountMap).map((account) => ({
+      ...account,
+      avgBookingSize:
+        account.opportunityCount > 0
+          ? account.bookingAmount / account.opportunityCount
+          : 0,
+      serviceLines: Array.from(account.serviceLines),
+      percentOfTotal: 0, // Will be calculated after sorting
+    }));
+
+    // Sort by booking amount by default
+    accountsArray.sort((a, b) => b.bookingAmount - a.bookingAmount);
+
+    // Calculate total bookings amount for percentage calculations
+    const total = accountsArray.reduce(
+      (sum, account) => sum + account.bookingAmount,
+      0
+    );
+    setTotalBookingsAmount(total);
+
+    // Add percentage of total
+    accountsArray.forEach((account) => {
+      account.percentOfTotal = (account.bookingAmount / total) * 100;
+    });
+
+    // Take top 10 accounts
+    const top10 = accountsArray.slice(0, 10);
+    setTopAccounts(top10);
+  }, [data]);
+
+  // Handle sort
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
     }
+    setSortConfig({ key, direction });
+
+    // Sort the data
+    const sortedData = [...topAccounts].sort((a, b) => {
+      if (a[key] < b[key]) {
+        return direction === "asc" ? -1 : 1;
+      }
+      if (a[key] > b[key]) {
+        return direction === "asc" ? 1 : -1;
+      }
+      return 0;
+    });
+
+    setTopAccounts(sortedData);
   };
+
+  // Prepare data for pie chart
+  const pieChartData = topAccounts.map((account) => ({
+    name: account.account,
+    value: account.bookingAmount,
+    calculatedValue: account.calculatedAmount,
+    count: account.opportunityCount,
+  }));
+
+  // Custom tooltip for pie chart
+  const CustomPieTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <Card
+          sx={{
+            p: 2,
+            backgroundColor: "white",
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: theme.shadows[3],
+            borderRadius: 2,
+            maxWidth: 300,
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600}>
+            {data.name}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Booking Amount:{" "}
+            {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(data.value)}
+          </Typography>
+          <Typography variant="body2" color="primary.main">
+            I&O Amount:{" "}
+            {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(data.calculatedValue)}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Opportunities: {data.count}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            % of Total: {((data.value / totalBookingsAmount) * 100).toFixed(1)}%
+          </Typography>
+        </Card>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <Paper
+      elevation={2}
+      sx={{
+        p: 3,
+        borderRadius: 3,
+        border: "1px solid",
+        borderColor: "divider",
+        mb: 3,
+      }}
+    >
+      <Typography variant="h6" fontWeight={600} gutterBottom>
+        Top 10 Accounts by Booking Amount
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Pie Chart */}
+        <Grid item xs={12} md={5}>
+          <Box sx={{ height: 400 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={150}
+                  fill="#8884d8"
+                  dataKey="value"
+                  nameKey="name"
+                  label={({ name, percent }) => {
+                    if (percent < 0.05) return null; // Don't show labels for tiny slices
+                    return `${name}: ${(percent * 100).toFixed(0)}%`;
+                  }}
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Box>
+        </Grid>
+
+        {/* Table */}
+        <Grid item xs={12} md={7}>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>
+                    <TableSortLabel
+                      active={sortConfig.key === "account"}
+                      direction={
+                        sortConfig.key === "account"
+                          ? sortConfig.direction
+                          : "asc"
+                      }
+                      onClick={() => handleSort("account")}
+                    >
+                      Account
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right">
+                    <TableSortLabel
+                      active={sortConfig.key === "bookingAmount"}
+                      direction={
+                        sortConfig.key === "bookingAmount"
+                          ? sortConfig.direction
+                          : "desc"
+                      }
+                      onClick={() => handleSort("bookingAmount")}
+                    >
+                      Booking Amount
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right">
+                    <TableSortLabel
+                      active={sortConfig.key === "opportunityCount"}
+                      direction={
+                        sortConfig.key === "opportunityCount"
+                          ? sortConfig.direction
+                          : "desc"
+                      }
+                      onClick={() => handleSort("opportunityCount")}
+                    >
+                      Opps
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right">
+                    <TableSortLabel
+                      active={sortConfig.key === "avgBookingSize"}
+                      direction={
+                        sortConfig.key === "avgBookingSize"
+                          ? sortConfig.direction
+                          : "desc"
+                      }
+                      onClick={() => handleSort("avgBookingSize")}
+                    >
+                      Avg Size
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="right">
+                    <TableSortLabel
+                      active={sortConfig.key === "percentOfTotal"}
+                      direction={
+                        sortConfig.key === "percentOfTotal"
+                          ? sortConfig.direction
+                          : "desc"
+                      }
+                      onClick={() => handleSort("percentOfTotal")}
+                    >
+                      % of Total
+                    </TableSortLabel>
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {topAccounts.map((account) => (
+                  <TableRow key={account.account} hover>
+                    <TableCell component="th" scope="row">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          flexDirection: "column",
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight={600}>
+                          {account.account}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Latest: {formatDateFR(account.latestBookingDate)}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={500}>
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(account.bookingAmount)}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="primary.main"
+                        display="block"
+                      >
+                        I&O:{" "}
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(account.calculatedAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        label={account.opportunityCount}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(account.avgBookingSize)}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        label={`${account.percentOfTotal.toFixed(1)}%`}
+                        size="small"
+                        color="secondary"
+                        sx={{
+                          backgroundColor: alpha(
+                            theme.palette.secondary.main,
+                            0.1
+                          ),
+                          color: theme.palette.secondary.main,
+                          fontWeight: 600,
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Box
+            sx={{
+              mt: 2,
+              p: 2,
+              bgcolor: alpha(theme.palette.info.main, 0.05),
+              borderRadius: 2,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Total booked amount:{" "}
+              {new Intl.NumberFormat("fr-FR", {
+                style: "currency",
+                currency: "EUR",
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(totalBookingsAmount)}
+            </Typography>
+
+            <Typography variant="body2" fontWeight={500}>
+              Top 10 accounts:{" "}
+              {new Intl.NumberFormat("fr-FR", {
+                style: "percent",
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(
+                topAccounts.reduce(
+                  (sum, account) => sum + account.percentOfTotal,
+                  0
+                ) / 100
+              )}{" "}
+              of total bookings
+            </Typography>
+          </Box>
+        </Grid>
+      </Grid>
+    </Paper>
+  );
+};
+
+// Custom component for the Period Filter
+const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
+  const theme = useTheme();
+
+  // Handle date change
+  const handleDateChange = (index, date) => {
+    const newDateRange = [...dateRange];
+    newDateRange[index] = date;
+    setDateRange(newDateRange);
+  };
+
+  // Reset date filter to the last 30 days
+  const handleResetDateFilter = () => {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+
+    setDateRange([startDate, endDate]);
+  };
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        backgroundColor: alpha(theme.palette.primary.main, 0.05),
+        borderRadius: 2,
+        p: 2,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+        mb: 2,
+      }}
+    >
+      <CalendarTodayIcon color="primary" />
+
+      <Typography variant="body2" fontWeight={500} sx={{ mr: 1 }}>
+        Period:
+      </Typography>
+
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <DatePicker
+          label="Start Date"
+          value={dateRange[0]}
+          onChange={(date) => handleDateChange(0, date)}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              size="small"
+              sx={{ width: 150 }}
+              variant="outlined"
+            />
+          )}
+          inputFormat="dd/MM/yyyy"
+        />
+
+        <Typography variant="body2" sx={{ mx: 1 }}>
+          to
+        </Typography>
+
+        <DatePicker
+          label="End Date"
+          value={dateRange[1]}
+          onChange={(date) => handleDateChange(1, date)}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              size="small"
+              sx={{ width: 150 }}
+              variant="outlined"
+            />
+          )}
+          inputFormat="dd/MM/yyyy"
+        />
+      </LocalizationProvider>
+
+      <Button
+        variant="outlined"
+        size="small"
+        startIcon={<FilterListIcon />}
+        onClick={updateDateAnalysis}
+        color="primary"
+        sx={{ ml: 1 }}
+      >
+        Apply Filter
+      </Button>
+
+      <IconButton
+        size="small"
+        onClick={handleResetDateFilter}
+        color="primary"
+        title="Reset to last 30 days"
+      >
+        <RestartAltIcon />
+      </IconButton>
+    </Box>
+  );
+};
+
+const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   const [yoyBookings, setYoyBookings] = useState([]);
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
   const [totalBookings, setTotalBookings] = useState(0);
   const [filteredOpportunities, setFilteredOpportunities] = useState([]);
   const [dateRange, setDateRange] = useState([
-    new Date(new Date().setDate(1)),
+    // Default to last 30 days
+    new Date(new Date().setDate(new Date().getDate() - 30)),
     new Date(),
   ]);
   const [newOpportunities, setNewOpportunities] = useState([]);
@@ -344,9 +774,9 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     const year = yearMatch[1];
 
     // Get the opportunities for this month and year
-     // Only consider opportunities in 2025
-     const opps = (clickedItem[`${year}Opps`] || []).filter(
-      (opp) => 
+    // Only consider opportunities in 2025
+    const opps = (clickedItem[`${year}Opps`] || []).filter(
+      (opp) =>
         opp["Status"] === 14 && // Booked opportunities
         new Date(opp["Last Status Change Date"]).getFullYear() === 2025
     );
@@ -354,13 +784,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     if (opps.length > 0) {
       setFilteredOpportunities(opps);
     }
-  };
-
-  
-  const handleDateChange = (index, date) => {
-    const newDateRange = [...dateRange];
-    newDateRange[index] = date;
-    setDateRange(newDateRange);
   };
 
   const handleAnalysisTabChange = (event, newValue) => {
@@ -375,6 +798,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       setFilteredOpportunities(newLosses);
     }
   };
+
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -441,11 +865,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     }
     return null;
   };
-
-  useEffect(() => {
-    // Prepare date range whenever period slider changes
-    prepareDateRange();
-  }, [periodRange, data]);
 
   useEffect(() => {
     // Trigger date analysis when date range is updated
@@ -522,100 +941,96 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     updateDateAnalysis();
   }, [data, loading]);
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "400px",
-        }}
-      >
-        <CircularProgress />
-      </Box>
+  // Revenue calculation function to match previous implementation
+  const calculateRevenueWithSegmentLogic = (item) => {
+    // Check if segment code is AUTO, CLR, or IEM
+    const specialSegmentCodes = ["AUTO", "CLR", "IEM"];
+    const isSpecialSegmentCode = specialSegmentCodes.includes(
+      item["Sub Segment Code"]
     );
-  }
 
-
-  // Filter for 2025 bookings
-   // Filter for 2025 bookings based on filtered opportunities
-  // Filter for 2025 bookings 
-  // Status 14 (Booked) AND Winning Date in 2025
-   // Filter for 2025 bookings 
-  // Status 14 (Booked) AND Last Status Change Date in 2025
-  // Simplified Bookings 2025 and Losses 2025 calculations
-// Custom revenue calculation function
-const calculateRevenueWithSegmentLogic = (item) => {
-  // Check if segment code is AUTO, CLR, or IEM
-  const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
-  const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
-
-  // If special segment code, return full gross revenue
-  if (isSpecialSegmentCode) {
-    return item['Gross Revenue'] || 0;
-  }
-
-  // Check each service line (1, 2, and 3)
-  const serviceLines = [
-    { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
-    { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
-    { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
-  ];
-
-  // Calculate total allocated revenue for Operations
-  const operationsAllocation = serviceLines.reduce((total, service) => {
-    if (service.line === 'Operations') {
-      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+    // If special segment code, return full gross revenue
+    if (isSpecialSegmentCode) {
+      return item["Gross Revenue"] || 0;
     }
-    return total;
-  }, 0);
 
-  // If any Operations allocation is found, return that
-  if (operationsAllocation > 0) {
-    return operationsAllocation;
-  }
+    // Check each service line (1, 2, and 3)
+    const serviceLines = [
+      {
+        line: item["Service Line 1"],
+        percentage: item["Service Offering 1 %"] || 0,
+      },
+      {
+        line: item["Service Line 2"],
+        percentage: item["Service Offering 2 %"] || 0,
+      },
+      {
+        line: item["Service Line 3"],
+        percentage: item["Service Offering 3 %"] || 0,
+      },
+    ];
 
-  // If no specific Operations allocation, return full gross revenue
-  return item['Gross Revenue'] || 0;
-};
+    // Calculate total allocated revenue for Operations
+    const operationsAllocation = serviceLines.reduce((total, service) => {
+      if (service.line === "Operations") {
+        return (
+          total + (item["Gross Revenue"] || 0) * (service.percentage / 100)
+        );
+      }
+      return total;
+    }, 0);
 
-// Bookings 2025 calculation with new revenue logic
-const bookings2025 = data.filter(
-  (item) =>
-    item['Status'] === 14 &&
-    item['Last Status Change Date'] &&
-    new Date(item['Last Status Change Date']).getFullYear() === 2025
-);
+    // If any Operations allocation is found, return that
+    if (operationsAllocation > 0) {
+      return operationsAllocation;
+    }
 
-const losses2025 = data.filter(
-  (item) =>
-    item["Status"] === 15 &&
-    item["Last Status Change Date"] &&
-    new Date(item["Last Status Change Date"]).getFullYear() === 2025
-);
+    // If no specific Operations allocation, return full gross revenue
+    return item["Gross Revenue"] || 0;
+  };
 
-// Calculate revenues with new logic
-const bookings2025Revenue = bookings2025.reduce(
-  (sum, item) => sum + calculateRevenueWithSegmentLogic(item), 
-  0
-);
+  // Bookings 2025 calculation with new revenue logic
+  const bookings2025 = data.filter(
+    (item) =>
+      item["Status"] === 14 &&
+      item["Last Status Change Date"] &&
+      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+  );
 
-const losses2025Revenue = losses2025.reduce(
-  (sum, item) => sum + (item["Gross Revenue"] || 0), 
-  0
-);
+  const losses2025 = data.filter(
+    (item) =>
+      item["Status"] === 15 &&
+      item["Last Status Change Date"] &&
+      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+  );
 
-// Calculate average booking size
-const averageBookingSize2025 = 
-  bookings2025.length > 0 
-    ? bookings2025Revenue / bookings2025.length 
-    : 0;
+  // Calculate revenues with new logic
+  const bookings2025Revenue = bookings2025.reduce(
+    (sum, item) => sum + calculateRevenueWithSegmentLogic(item),
+    0
+  );
 
+  const losses2025Revenue = losses2025.reduce(
+    (sum, item) => sum + (item["Gross Revenue"] || 0),
+    0
+  );
 
-    return (
+  // Calculate average booking size
+  const averageBookingSize2025 =
+    bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
+
+  return (
     <Fade in={!loading} timeout={500}>
       <Box sx={{ width: "100%" }}>
+        {/* Period Filter at the top - NEW PLACEMENT */}
+        <Grid item xs={12}>
+          <PeriodFilter
+            dateRange={dateRange}
+            setDateRange={setDateRange}
+            updateDateAnalysis={updateDateAnalysis}
+          />
+        </Grid>
+
         <Grid
           container
           spacing={3}
@@ -703,12 +1118,15 @@ const averageBookingSize2025 =
                   >
                     {selectedOpportunities.length > 0
                       ? `${Math.round(
-                          (bookings2025.length / 
+                          (bookings2025.length /
                             data.filter(
                               (item) =>
                                 item["Status"] === 14 &&
-                                new Date(item["Last Status Change Date"]).getFullYear() === 2025
-                            ).length) * 100
+                                new Date(
+                                  item["Last Status Change Date"]
+                                ).getFullYear() === 2025
+                            ).length) *
+                            100
                         )}%`
                       : "100%"}{" "}
                     vs total
@@ -798,12 +1216,15 @@ const averageBookingSize2025 =
                   >
                     {selectedOpportunities.length > 0
                       ? `${Math.round(
-                          (losses2025.length / 
+                          (losses2025.length /
                             data.filter(
                               (item) =>
                                 item["Status"] === 15 &&
-                                new Date(item["Last Status Change Date"]).getFullYear() === 2025
-                            ).length) * 100
+                                new Date(
+                                  item["Last Status Change Date"]
+                                ).getFullYear() === 2025
+                            ).length) *
+                            100
                         )}%`
                       : "100%"}{" "}
                     vs total
@@ -885,7 +1306,9 @@ const averageBookingSize2025 =
                         maximumFractionDigits: 0,
                       }).format(
                         Math.min(
-                          ...bookings2025.map((opp) => opp["Gross Revenue"] || 0)
+                          ...bookings2025.map(
+                            (opp) => opp["Gross Revenue"] || 0
+                          )
                         )
                       )}{" "}
                       -
@@ -896,7 +1319,9 @@ const averageBookingSize2025 =
                         maximumFractionDigits: 0,
                       }).format(
                         Math.max(
-                          ...bookings2025.map((opp) => opp["Gross Revenue"] || 0)
+                          ...bookings2025.map(
+                            (opp) => opp["Gross Revenue"] || 0
+                          )
                         )
                       )}
                     </>
@@ -920,12 +1345,15 @@ const averageBookingSize2025 =
                   >
                     {selectedOpportunities.length > 0
                       ? `${Math.round(
-                          (bookings2025.length / 
+                          (bookings2025.length /
                             data.filter(
                               (item) =>
                                 item["Status"] === 14 &&
-                                new Date(item["Last Status Change Date"]).getFullYear() === 2025
-                            ).length) * 100
+                                new Date(
+                                  item["Last Status Change Date"]
+                                ).getFullYear() === 2025
+                            ).length) *
+                            100
                         )}%`
                       : "100%"}{" "}
                     vs total
@@ -936,6 +1364,7 @@ const averageBookingSize2025 =
             </Paper>
           </Grid>
         </Grid>
+
         {/* Monthly Bookings Chart */}
         <Grid item xs={12}>
           <Paper
@@ -946,6 +1375,7 @@ const averageBookingSize2025 =
               borderRadius: 3,
               border: "1px solid",
               borderColor: "divider",
+              mb: 3,
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight={600}>
@@ -1033,7 +1463,10 @@ const averageBookingSize2025 =
           </Paper>
         </Grid>
 
-        {/* Date Range Analysis */}
+        {/* NEW: Top 10 Accounts Section */}
+        <TopAccountsSection data={data} />
+
+        {/* Period Analysis Results */}
         <Grid item xs={12}>
           <Paper
             elevation={2}
@@ -1045,190 +1478,10 @@ const averageBookingSize2025 =
             }}
           >
             <Typography variant="h6" gutterBottom fontWeight={600}>
-              Period Analysis
+              Period Analysis Results
             </Typography>
-            <Box sx={{ px: 4, mb: 4 }}>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Select a date range on the timeline
-                </Typography>
-              </Box>
 
-              {data && data.length > 0 && (
-                <>
-                  {/* Timeline Slider */}
-                  <Box
-                    sx={{
-                      mt: 3,
-                      mb: 4,
-                      height: 100, // Increased height for the timeline
-                      position: "relative",
-                    }}
-                  >
-                    {/* First get date range for the marks */}
-                    {(() => {
-                      const sortedData = [...data].sort(
-                        (a, b) =>
-                          new Date(a["Last Status Change Date"]) -
-                          new Date(b["Last Status Change Date"])
-                      );
-
-                      const firstDate = new Date(
-                        sortedData[0]["Last Status Change Date"]
-                      );
-                      const lastDate = new Date(
-                        sortedData[sortedData.length - 1][
-                          "Last Status Change Date"
-                        ]
-                      );
-
-                      // Generate timeline marks
-                      const timelineMarks = generateTimelineMarks(
-                        firstDate,
-                        lastDate
-                      );
-
-                      return (
-                        <Slider
-                          value={periodRange}
-                          onChange={handlePeriodChange}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(value) => {
-                            // Find the corresponding date
-                            const totalDuration =
-                              lastDate.getTime() - firstDate.getTime();
-                            const selectedDate = new Date(
-                              firstDate.getTime() +
-                                (totalDuration * value) / 100
-                            );
-                            return formatDateFR(selectedDate);
-                          }}
-                          marks={timelineMarks}
-                          step={null} // This forces selection only at mark points
-                          sx={{
-                            "& .MuiSlider-markLabel": {
-                              fontSize: "0.7rem",
-                              color: "text.secondary",
-                              transform: "rotate(-45deg) translateX(-100%)",
-                              transformOrigin: "top left",
-                              whiteSpace: "nowrap",
-                              marginTop: "8px",
-                            },
-                            "& .MuiSlider-thumb": {
-                              height: 16,
-                              width: 16,
-                              backgroundColor: theme.palette.primary.main,
-                            },
-                            "& .MuiSlider-track": {
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: theme.palette.primary.main,
-                              border: "none", // Remove border to fix the blue line issue
-                            },
-                            "& .MuiSlider-rail": {
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: alpha(
-                                theme.palette.primary.main,
-                                0.2
-                              ),
-                              opacity: 1,
-                            },
-                            "& .MuiSlider-mark": {
-                              backgroundColor: theme.palette.primary.main,
-                              height: 8,
-                              width: 1,
-                              marginTop: -3,
-                            },
-                            mt: 4, // Extra margin at top to accommodate rotated labels
-                            "& .MuiSlider-root": {
-                              border: "none", // Remove any border on root element
-                            },
-                          }}
-                        />
-                      );
-                    })()}
-
-                    {/* Visual indicator of selected period (positioned below slider) */}
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        bottom: -10,
-                        left: `${periodRange[0]}%`,
-                        width: `${periodRange[1] - periodRange[0]}%`,
-                        height: 4,
-                        backgroundColor: alpha(theme.palette.primary.main, 0.6),
-                        borderRadius: 2,
-                        border: "none",
-                      }}
-                    />
-                  </Box>
-                </>
-              )}
-
-              {/* Date Range Display Panel */}
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  mt: 2,
-                  mb: 1,
-                  backgroundColor: alpha(theme.palette.primary.main, 0.08),
-                  borderRadius: 2,
-                  p: 1.5,
-                }}
-              >
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Start date:
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color="primary.main"
-                  >
-                    {dateRange[0] ? formatDateFR(dateRange[0]) : "Start"}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ textAlign: "center" }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Duration:
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color="primary.dark"
-                  >
-                    {dateRange[0] && dateRange[1]
-                      ? `${Math.round(
-                          (dateRange[1] - dateRange[0]) / (1000 * 60 * 60 * 24)
-                        )} days`
-                      : "-"}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    align="right"
-                  >
-                    End date:
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color="primary.main"
-                    align="right"
-                  >
-                    {dateRange[1] ? formatDateFR(dateRange[1]) : "End"}
-                  </Typography>
-                </Box>
-              </Box>
-            </Box>
-
-            <Divider sx={{ mb: 2 }} />
+            <Divider sx={{ mb: 3 }} />
 
             <Tabs
               value={analysisTab}
@@ -1316,7 +1569,7 @@ const averageBookingSize2025 =
         </Grid>
 
         {/* Opportunity List */}
-        <Grid item xs={12}>
+        <Grid item xs={12} sx={{ mt: 3 }}>
           <OpportunityList
             data={filteredOpportunities}
             title="Bookings"
