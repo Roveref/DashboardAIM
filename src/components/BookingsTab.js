@@ -30,6 +30,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  LinearProgress,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -75,29 +76,24 @@ const formatDateFR = (date) => {
   });
 };
 
-// Custom component for the Top Accounts Section
-const TopAccountsSection = ({ data }) => {
+const TopAccountsSection = ({ data, dateRange }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({
-    key: "bookingAmount",
+    key: "calculatedAmount", // Default sort by I&O amount
     direction: "desc",
   });
 
   // State for the top accounts data
   const [topAccounts, setTopAccounts] = useState([]);
   const [totalBookingsAmount, setTotalBookingsAmount] = useState(0);
-  const COLORS = [
-    theme.palette.primary.main,
-    theme.palette.secondary.main,
-    theme.palette.success.main,
-    theme.palette.warning.main,
-    theme.palette.info.main,
-    theme.palette.error.main,
-    "#8884d8",
-    "#82ca9d",
-    "#ffc658",
-    "#ff7300",
-  ];
+  const [totalIOAmount, setTotalIOAmount] = useState(0);
+  const [allAccountsBookingsTotal, setAllAccountsBookingsTotal] = useState(0);
+  const [allAccountsIOTotal, setAllAccountsIOTotal] = useState(0);
+  const [specialSegmentBookingsTotal, setSpecialSegmentBookingsTotal] = useState(0);
+  const [specialSegmentIOTotal, setSpecialSegmentIOTotal] = useState(0);
+  
+  // Target amount in euros for I&O
+  const IO_TARGET = 1000000; // 1 million euros
 
   // Revenue calculation function to match previous implementation
   const calculateRevenueWithSegmentLogic = (item) => {
@@ -151,8 +147,36 @@ const TopAccountsSection = ({ data }) => {
     if (!data || data.length === 0) return;
 
     // Filter to only include booked opportunities (Status 14)
-    const bookedOpportunities = data.filter((item) => item.Status === 14);
+    let bookedOpportunities = data.filter((item) => item.Status === 14);
+    
+    // Apply date range filter if available
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      bookedOpportunities = bookedOpportunities.filter((item) => {
+        const statusDate = new Date(item["Last Status Change Date"]);
+        return statusDate >= dateRange[0] && statusDate <= dateRange[1];
+      });
+    }
 
+    // Calculate total bookings and I&O amounts for ALL filtered accounts
+    const totalAllBookings = bookedOpportunities.reduce(
+      (sum, opp) => sum + (opp["Gross Revenue"] || 0),
+      0
+    );
+    
+    const totalAllIO = bookedOpportunities.reduce(
+      (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp),
+      0
+    );
+    
+    // Calculate special segment totals (CLR, IEM, AUTO)
+    const specialSegmentBookings = bookedOpportunities
+      .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
+      .reduce((sum, opp) => sum + (opp["Gross Revenue"] || 0), 0);
+    
+    const specialSegmentIO = bookedOpportunities
+      .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
+      .reduce((sum, opp) => sum + calculateRevenueWithSegmentLogic(opp), 0);
+    
     // Group by account
     const accountMap = {};
 
@@ -169,6 +193,8 @@ const TopAccountsSection = ({ data }) => {
           serviceLines: new Set(),
           // Track dates for latest booking
           latestBookingDate: null,
+          // Track if this is a special segment account
+          hasSpecialSegment: false
         };
       }
 
@@ -180,6 +206,11 @@ const TopAccountsSection = ({ data }) => {
       accountMap[account].calculatedAmount += calculatedAmount;
       accountMap[account].opportunityCount += 1;
       accountMap[account].opportunities.push(opportunity);
+      
+      // Check for special segment
+      if (["AUTO", "CLR", "IEM"].includes(opportunity["Sub Segment Code"])) {
+        accountMap[account].hasSpecialSegment = true;
+      }
 
       // Track service lines
       if (opportunity["Service Line 1"]) {
@@ -209,27 +240,44 @@ const TopAccountsSection = ({ data }) => {
           : 0,
       serviceLines: Array.from(account.serviceLines),
       percentOfTotal: 0, // Will be calculated after sorting
+      ioProgressPercentage: Math.min((account.calculatedAmount / IO_TARGET) * 100, 100) // Calculate progress toward 1M€ target
     }));
 
-    // Sort by booking amount by default
-    accountsArray.sort((a, b) => b.bookingAmount - a.bookingAmount);
+    // Sort by I&O amount (calculatedAmount) by default - largest to smallest
+    accountsArray.sort((a, b) => b.calculatedAmount - a.calculatedAmount);
 
-    // Calculate total bookings amount for percentage calculations
-    const total = accountsArray.reduce(
+    // Take top 10 accounts (after sorting by I&O amount)
+    const top10 = accountsArray.slice(0, 10);
+    
+    // Calculate totals for only the top 10 accounts
+    const top10BookingsTotal = top10.reduce(
       (sum, account) => sum + account.bookingAmount,
       0
     );
-    setTotalBookingsAmount(total);
+    
+    const top10IOTotal = top10.reduce(
+      (sum, account) => sum + account.calculatedAmount,
+      0
+    );
+    
+    setTotalBookingsAmount(top10BookingsTotal);
+    setTotalIOAmount(top10IOTotal);
+    
+    // Store full period totals for all accounts
+    setAllAccountsBookingsTotal(totalAllBookings);
+    setAllAccountsIOTotal(totalAllIO);
+    
+    // Store special segment totals
+    setSpecialSegmentBookingsTotal(specialSegmentBookings);
+    setSpecialSegmentIOTotal(specialSegmentIO);
 
-    // Add percentage of total
-    accountsArray.forEach((account) => {
-      account.percentOfTotal = (account.bookingAmount / total) * 100;
+    // Add percentage of total (using all accounts total)
+    top10.forEach((account) => {
+      account.percentOfTotal = (account.bookingAmount / totalAllBookings) * 100;
     });
 
-    // Take top 10 accounts
-    const top10 = accountsArray.slice(0, 10);
     setTopAccounts(top10);
-  }, [data]);
+  }, [data, dateRange]);
 
   // Handle sort
   const handleSort = (key) => {
@@ -253,61 +301,12 @@ const TopAccountsSection = ({ data }) => {
     setTopAccounts(sortedData);
   };
 
-  // Prepare data for pie chart
-  const pieChartData = topAccounts.map((account) => ({
-    name: account.account,
-    value: account.bookingAmount,
-    calculatedValue: account.calculatedAmount,
-    count: account.opportunityCount,
-  }));
-
-  // Custom tooltip for pie chart
-  const CustomPieTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <Card
-          sx={{
-            p: 2,
-            backgroundColor: "white",
-            border: "1px solid",
-            borderColor: alpha(theme.palette.primary.main, 0.1),
-            boxShadow: theme.shadows[3],
-            borderRadius: 2,
-            maxWidth: 300,
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={600}>
-            {data.name}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Booking Amount:{" "}
-            {new Intl.NumberFormat("fr-FR", {
-              style: "currency",
-              currency: "EUR",
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0,
-            }).format(data.value)}
-          </Typography>
-          <Typography variant="body2" color="primary.main">
-            I&O Amount:{" "}
-            {new Intl.NumberFormat("fr-FR", {
-              style: "currency",
-              currency: "EUR",
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0,
-            }).format(data.calculatedValue)}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Opportunities: {data.count}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            % of Total: {((data.value / totalBookingsAmount) * 100).toFixed(1)}%
-          </Typography>
-        </Card>
-      );
-    }
-    return null;
+  // Get progress bar color based on percentage
+  const getProgressColor = (percentage) => {
+    if (percentage >= 100) return theme.palette.success.main;
+    if (percentage >= 70) return theme.palette.success.light;
+    if (percentage >= 30) return theme.palette.warning.main;
+    return theme.palette.error.main;
   };
 
   return (
@@ -322,44 +321,19 @@ const TopAccountsSection = ({ data }) => {
       }}
     >
       <Typography variant="h6" fontWeight={600} gutterBottom>
-        Top 10 Accounts by Booking Amount
+        Top 10 Accounts
       </Typography>
+      
+      {/* Date range indicator */}
+      {dateRange && dateRange[0] && dateRange[1] && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          For period: {formatDateFR(dateRange[0])} to {formatDateFR(dateRange[1])}
+        </Typography>
+      )}
 
       <Grid container spacing={3}>
-        {/* Pie Chart */}
-        <Grid item xs={12} md={5}>
-          <Box sx={{ height: 400 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  outerRadius={150}
-                  fill="#8884d8"
-                  dataKey="value"
-                  nameKey="name"
-                  label={({ name, percent }) => {
-                    if (percent < 0.05) return null; // Don't show labels for tiny slices
-                    return `${name}: ${(percent * 100).toFixed(0)}%`;
-                  }}
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomPieTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-          </Box>
-        </Grid>
-
-        {/* Table */}
-        <Grid item xs={12} md={7}>
+        {/* Table with Progress Bars - now full width */}
+        <Grid item xs={12}>
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -392,6 +366,24 @@ const TopAccountsSection = ({ data }) => {
                   </TableCell>
                   <TableCell align="right">
                     <TableSortLabel
+                      active={sortConfig.key === "calculatedAmount"}
+                      direction={
+                        sortConfig.key === "calculatedAmount"
+                          ? sortConfig.direction
+                          : "desc"
+                      }
+                      onClick={() => handleSort("calculatedAmount")}
+                    >
+                      I&O Amount
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell align="center" colSpan={2}>
+                    <Typography variant="body2" fontWeight={600}>
+                      €1M I&O Target
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <TableSortLabel
                       active={sortConfig.key === "opportunityCount"}
                       direction={
                         sortConfig.key === "opportunityCount"
@@ -401,19 +393,6 @@ const TopAccountsSection = ({ data }) => {
                       onClick={() => handleSort("opportunityCount")}
                     >
                       Opps
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell align="right">
-                    <TableSortLabel
-                      active={sortConfig.key === "avgBookingSize"}
-                      direction={
-                        sortConfig.key === "avgBookingSize"
-                          ? sortConfig.direction
-                          : "desc"
-                      }
-                      onClick={() => handleSort("avgBookingSize")}
-                    >
-                      Avg Size
                     </TableSortLabel>
                   </TableCell>
                   <TableCell align="right">
@@ -432,120 +411,390 @@ const TopAccountsSection = ({ data }) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {topAccounts.map((account) => (
-                  <TableRow key={account.account} hover>
-                    <TableCell component="th" scope="row">
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          flexDirection: "column",
-                        }}
-                      >
-                        <Typography variant="body2" fontWeight={600}>
-                          {account.account}
+                {topAccounts.map((account) => {
+                  // Check if account has any opportunities with special segment codes
+                  const hasSpecialSegment = account.opportunities.some(opp => 
+                    ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"])
+                  );
+                  
+                  return (
+                    <TableRow 
+                      key={account.account} 
+                      hover
+                      sx={hasSpecialSegment ? {
+                        backgroundColor: alpha(theme.palette.info.light, 0.15),
+                        '&:hover': {
+                          backgroundColor: alpha(theme.palette.info.light, 0.25),
+                        }
+                      } : {}}
+                    >
+                      <TableCell component="th" scope="row">
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            flexDirection: "column",
+                          }}
+                        >
+                          <Typography variant="body2" fontWeight={600}>
+                            {account.account}
+                            {hasSpecialSegment && (
+                              <Chip
+                                label="AUTO/CLR/IEM"
+                                size="small"
+                                color="info"
+                                sx={{ ml: 1, height: 20, fontSize: '0.65rem' }}
+                              />
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Latest: {formatDateFR(account.latestBookingDate)}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" fontWeight={500}>
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(account.bookingAmount)}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Latest: {formatDateFR(account.latestBookingDate)}
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Avg: {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(account.avgBookingSize)}
                         </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" fontWeight={500}>
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(account.bookingAmount)}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="primary.main"
-                        display="block"
-                      >
-                        I&O:{" "}
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(account.calculatedAmount)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={account.opportunityCount}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(account.avgBookingSize)}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={`${account.percentOfTotal.toFixed(1)}%`}
-                        size="small"
-                        color="secondary"
-                        sx={{
-                          backgroundColor: alpha(
-                            theme.palette.secondary.main,
-                            0.1
-                          ),
-                          color: theme.palette.secondary.main,
-                          fontWeight: 600,
-                        }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" fontWeight={600} color="primary.main">
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(account.calculatedAmount)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {(account.calculatedAmount / account.bookingAmount * 100).toFixed(1)}% of bookings
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right" width="15%">
+                        <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                          {account.ioProgressPercentage.toFixed(1)}%
+                        </Typography>
+                      </TableCell>
+                      <TableCell width="20%">
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box sx={{ width: '100%', mr: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={account.ioProgressPercentage}
+                              sx={{
+                                height: 10,
+                                borderRadius: 5,
+                                backgroundColor: alpha(theme.palette.grey[300], 0.5),
+                                '& .MuiLinearProgress-bar': {
+                                  borderRadius: 5,
+                                  backgroundColor: getProgressColor(account.ioProgressPercentage),
+                                },
+                              }}
+                            />
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip
+                          label={account.opportunityCount}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip
+                          label={`${account.percentOfTotal.toFixed(1)}%`}
+                          size="small"
+                          color="secondary"
+                          sx={{
+                            backgroundColor: alpha(
+                              theme.palette.secondary.main,
+                              0.1
+                            ),
+                            color: theme.palette.secondary.main,
+                            fontWeight: 600,
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
 
           <Box
-            sx={{
-              mt: 2,
-              p: 2,
-              bgcolor: alpha(theme.palette.info.main, 0.05),
-              borderRadius: 2,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              Total booked amount:{" "}
-              {new Intl.NumberFormat("fr-FR", {
-                style: "currency",
-                currency: "EUR",
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              }).format(totalBookingsAmount)}
-            </Typography>
-
-            <Typography variant="body2" fontWeight={500}>
-              Top 10 accounts:{" "}
-              {new Intl.NumberFormat("fr-FR", {
-                style: "percent",
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              }).format(
-                topAccounts.reduce(
-                  (sum, account) => sum + account.percentOfTotal,
-                  0
-                ) / 100
-              )}{" "}
-              of total bookings
-            </Typography>
-          </Box>
+  sx={{
+    mt: 2,
+    p: 2,
+    borderRadius: 2,
+    backgroundColor: alpha(theme.palette.background.paper, 0.7),
+    border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+    boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.08)}`,
+  }}
+>
+  <Grid container spacing={2}>
+    {/* Total Bookings Card */}
+    <Grid item xs={12} md={4}>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 0,
+          height: '100%',
+          borderRadius: 2,
+          overflow: 'hidden',
+          boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.1)}`,
+          border: `1px solid ${alpha(theme.palette.divider, 0.08)}`,
+        }}
+      >
+        <Box 
+          sx={{ 
+            p: 1.5, 
+            backgroundColor: alpha(theme.palette.grey[100], 0.7),
+            borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600} color="text.primary">
+            Bookings
+          </Typography>
+        </Box>
+        
+        <Box sx={{ p: 2, backgroundColor: alpha(theme.palette.background.paper, 0.9) }}>
+          <Grid container alignItems="center">
+            {/* Total Value */}
+            <Grid item xs={5}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Total
+              </Typography>
+              <Typography variant="subtitle1" fontWeight={700} color="text.primary">
+                {new Intl.NumberFormat("fr-FR", {
+                  style: "currency",
+                  currency: "EUR",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(allAccountsBookingsTotal)}
+              </Typography>
+            </Grid>
+            
+            {/* Arrow & Percentage */}
+            <Grid item xs={2} sx={{ textAlign: 'center' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Typography variant="caption" fontWeight={600} color="text.secondary">
+                  {(totalBookingsAmount / allAccountsBookingsTotal * 100).toFixed(1)}%
+                </Typography>
+                <Box component="span" sx={{ 
+                  color: theme.palette.text.secondary,
+                  fontSize: '1.5rem',
+                  lineHeight: 1
+                }}>
+                  →
+                </Box>
+              </Box>
+            </Grid>
+            
+            {/* Top 10 Value */}
+            <Grid item xs={5}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Top 10
+              </Typography>
+              <Typography variant="h6" fontWeight={700} color="text.primary">
+                {new Intl.NumberFormat("fr-FR", {
+                  style: "currency",
+                  currency: "EUR",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(totalBookingsAmount)}
+              </Typography>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Grid>
+    
+    {/* I&O Card */}
+    <Grid item xs={12} md={4}>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 0,
+          height: '100%',
+          borderRadius: 2,
+          overflow: 'hidden',
+          boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.1)}`,
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+        }}
+      >
+        <Box 
+          sx={{ 
+            p: 1.5, 
+            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+            borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600} color="primary.dark">
+            I&O
+          </Typography>
+        </Box>
+        
+        <Box sx={{ p: 2, backgroundColor: alpha(theme.palette.primary.light, 0.04) }}>
+          <Grid container alignItems="center">
+            {/* Total Value */}
+            <Grid item xs={5}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Total
+              </Typography>
+              <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+                {new Intl.NumberFormat("fr-FR", {
+                  style: "currency",
+                  currency: "EUR",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(allAccountsIOTotal)}
+              </Typography>
+            </Grid>
+            
+            {/* Arrow & Percentage */}
+            <Grid item xs={2} sx={{ textAlign: 'center' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Typography variant="caption" fontWeight={600} color="primary.main">
+                  {(totalIOAmount / allAccountsIOTotal * 100).toFixed(1)}%
+                </Typography>
+                <Box component="span" sx={{ 
+                  color: theme.palette.primary.main,
+                  fontSize: '1.5rem',
+                  lineHeight: 1
+                }}>
+                  →
+                </Box>
+              </Box>
+            </Grid>
+            
+            {/* Top 10 Value */}
+            <Grid item xs={5}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Top 10
+              </Typography>
+              <Typography variant="h6" fontWeight={700} color="primary.main">
+                {new Intl.NumberFormat("fr-FR", {
+                  style: "currency",
+                  currency: "EUR",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(totalIOAmount)}
+              </Typography>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Grid>
+    
+    {/* AUTO/CLR/IEM Card */}
+    <Grid item xs={12} md={4}>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 0,
+          height: '100%',
+          borderRadius: 2,
+          overflow: 'hidden',
+          boxShadow: `0 4px 20px 0 ${alpha(theme.palette.info.main, 0.1)}`,
+          border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
+        }}
+      >
+        <Box 
+          sx={{ 
+            p: 1.5, 
+            backgroundColor: alpha(theme.palette.info.main, 0.1),
+            borderBottom: `1px solid ${alpha(theme.palette.info.main, 0.2)}`
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight={600} color="info.dark">
+            AUTO/CLR/IEM
+          </Typography>
+        </Box>
+        
+        <Box sx={{ p: 2, backgroundColor: alpha(theme.palette.info.light, 0.04) }}>
+          <Grid container alignItems="center">
+            {/* Total Value */}
+            <Grid item xs={5}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Top 10 Total
+              </Typography>
+              <Typography variant="subtitle1" fontWeight={700} color="text.primary">
+                {new Intl.NumberFormat("fr-FR", {
+                  style: "currency",
+                  currency: "EUR",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(totalBookingsAmount)}
+              </Typography>
+            </Grid>
+            
+            {/* Arrow & Percentage */}
+            <Grid item xs={2} sx={{ textAlign: 'center' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Typography variant="caption" fontWeight={600} color="info.main">
+                  {totalBookingsAmount > 0 ? (specialSegmentBookingsTotal / totalBookingsAmount * 100).toFixed(1) : "0.0"}%
+                </Typography>
+                <Box component="span" sx={{ 
+                  color: theme.palette.info.main,
+                  fontSize: '1.5rem',
+                  lineHeight: 1
+                }}>
+                  →
+                </Box>
+              </Box>
+            </Grid>
+            
+            {/* Special Segment Value */}
+            <Grid item xs={5}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                In Segment
+              </Typography>
+              <Typography variant="h6" fontWeight={700} color="info.main">
+                {new Intl.NumberFormat("fr-FR", {
+                  style: "currency",
+                  currency: "EUR",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(specialSegmentBookingsTotal)}
+              </Typography>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Grid>
+  </Grid>
+</Box>
         </Grid>
       </Grid>
     </Paper>
@@ -563,11 +812,10 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
     setDateRange(newDateRange);
   };
 
-  // Reset date filter to the last 30 days
+  // Reset date filter to the 1st of the current year to today
   const handleResetDateFilter = () => {
     const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
+    const startDate = new Date(endDate.getFullYear(), 0, 1); // January 1st of current year
 
     setDateRange([startDate, endDate]);
   };
@@ -588,12 +836,12 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
       <CalendarTodayIcon color="primary" />
 
       <Typography variant="body2" fontWeight={500} sx={{ mr: 1 }}>
-        Period:
+        Période:
       </Typography>
 
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <DatePicker
-          label="Start Date"
+          label="Date de début"
           value={dateRange[0]}
           onChange={(date) => handleDateChange(0, date)}
           renderInput={(params) => (
@@ -608,11 +856,11 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
         />
 
         <Typography variant="body2" sx={{ mx: 1 }}>
-          to
+          à
         </Typography>
 
         <DatePicker
-          label="End Date"
+          label="Date de fin"
           value={dateRange[1]}
           onChange={(date) => handleDateChange(1, date)}
           renderInput={(params) => (
@@ -634,15 +882,13 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
         onClick={updateDateAnalysis}
         color="primary"
         sx={{ ml: 1 }}
-      >
-        Apply Filter
-      </Button>
+      >      </Button>
 
       <IconButton
         size="small"
         onClick={handleResetDateFilter}
         color="primary"
-        title="Reset to last 30 days"
+        title="Réinitialiser au 1er janvier de l'année en cours"
       >
         <RestartAltIcon />
       </IconButton>
@@ -655,11 +901,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
   const [totalBookings, setTotalBookings] = useState(0);
   const [filteredOpportunities, setFilteredOpportunities] = useState([]);
+  
+  // Set default date range to January 1st of current year to today
+  const currentYear = new Date().getFullYear();
   const [dateRange, setDateRange] = useState([
-    // Default to last 30 days
-    new Date(new Date().setDate(new Date().getDate() - 30)),
-    new Date(),
+    new Date(currentYear, 0, 1), // January 1st of current year
+    new Date(), // Today
   ]);
+  
   const [newOpportunities, setNewOpportunities] = useState([]);
   const [newWins, setNewWins] = useState([]);
   const [newLosses, setNewLosses] = useState([]);
@@ -700,40 +949,40 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
 
   // Update date analysis method to use Last Status Change Date
   const updateDateAnalysis = () => {
-    if (!data || !dateRange[0] || !dateRange[1]) return;
-
-    const startDate = dateRange[0];
-    const endDate = dateRange[1];
-
+    if (!data) return;
+    
+    const startDate = dateRange[0] || new Date(currentYear, 0, 1);  // Default to Jan 1st
+    const endDate = dateRange[1] || new Date();  // Default to today
+    
     console.log("Updating Date Analysis:");
     console.log("Start Date:", startDate);
     console.log("End Date:", endDate);
-
-    // Get new bookings and losses within the date range, based on Last Status Change Date
-    // For booking (status 14), the winning date is the last status change date
+  
+    // Get new bookings and losses within the date range
     const wins = data.filter((item) => {
       if (item["Status"] !== 14) return false;
+      if (!item["Last Status Change Date"]) return false;
       const statusDate = new Date(item["Last Status Change Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
-
-    // For losses (status 15), the lost date is the last status change date
+  
     const losses = data.filter((item) => {
       if (item["Status"] !== 15) return false;
+      if (!item["Last Status Change Date"]) return false;
       const statusDate = new Date(item["Last Status Change Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
-
+  
     console.log("Wins:", wins.length);
     console.log("Losses:", losses.length);
-
+  
     setNewWins(wins);
     setNewLosses(losses);
-
+  
     // Update filtered opportunities based on current tab
     if (analysisTab === 0) {
       setFilteredOpportunities(wins);
-    } else if (analysisTab === 1) {
+    } else {
       setFilteredOpportunities(losses);
     }
   };
@@ -865,6 +1114,33 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     }
     return null;
   };
+
+  // Add this useEffect to trigger the initial data processing and chart population
+useEffect(() => {
+  // This will ensure the chart data is processed on initial load
+  if (data && data.length > 0 && !loading) {
+    // Process data for chart when component mounts
+    const bookedData = data.filter((item) => item["Status"] === 14);
+    const monthly = getMonthlyYearlyTotals(
+      bookedData,
+      "Last Status Change Date",
+      "Gross Revenue"
+    );
+    const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
+    setYears(uniqueYears);
+
+    // Format data for YoY comparison
+    const yoyData = formatYearOverYearData(monthly);
+    setYoyBookings(yoyData);
+
+    // Calculate cumulative data
+    const cumData = calculateCumulativeTotals(yoyData);
+    setCumulativeData(cumData);
+    
+    // Also trigger the date analysis to ensure filtered opportunities are set
+    updateDateAnalysis();
+  }
+}, []);  // Empty dependency array means this runs once on mount
 
   useEffect(() => {
     // Trigger date analysis when date range is updated
@@ -1022,15 +1298,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   return (
     <Fade in={!loading} timeout={500}>
       <Box sx={{ width: "100%" }}>
-        {/* Period Filter at the top - NEW PLACEMENT */}
-        <Grid item xs={12}>
-          <PeriodFilter
-            dateRange={dateRange}
-            setDateRange={setDateRange}
-            updateDateAnalysis={updateDateAnalysis}
-          />
-        </Grid>
-
         <Grid
           container
           spacing={3}
@@ -1463,10 +1730,19 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
           </Paper>
         </Grid>
 
-        {/* NEW: Top 10 Accounts Section */}
-        <TopAccountsSection data={data} />
+        {/* Period Filter MOVED HERE - between chart and Top 10 accounts */}
+        <Grid item xs={12}>
+          <PeriodFilter
+            dateRange={dateRange}
+            setDateRange={setDateRange}
+            updateDateAnalysis={updateDateAnalysis}
+          />
+        </Grid>
 
-        {/* Period Analysis Results */}
+        {/* NEW: Top 10 Accounts Section with date range filter */}
+        <TopAccountsSection data={data} dateRange={dateRange} />
+
+        {/* Period Analysis Results - Improved Design */}
         <Grid item xs={12}>
           <Paper
             elevation={2}
@@ -1480,6 +1756,11 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
             <Typography variant="h6" gutterBottom fontWeight={600}>
               Period Analysis Results
             </Typography>
+            
+            {/* Date range indicator */}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              For period: {formatDateFR(dateRange[0])} to {formatDateFR(dateRange[1])}
+            </Typography>
 
             <Divider sx={{ mb: 3 }} />
 
@@ -1488,80 +1769,153 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
               onChange={handleAnalysisTabChange}
               aria-label="analysis tabs"
               variant="fullWidth"
-              sx={{ mb: 2 }}
+              sx={{ 
+                mb: 3,
+                '& .MuiTab-root': {
+                  fontWeight: 600
+                },
+                '& .Mui-selected': {
+                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  borderRadius: '8px 8px 0 0'
+                }
+              }}
             >
-              <Tab label={`Wins (${newWins.length})`} />
-              <Tab label={`Lost (${newLosses.length})`} />
+              <Tab 
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1">Wins</Typography>
+                    <Chip 
+                      label={newWins.length} 
+                      size="small" 
+                      color="success" 
+                      sx={{ fontWeight: 'bold' }}
+                    />
+                  </Box>
+                } 
+              />
+              <Tab 
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1">Lost</Typography>
+                    <Chip 
+                      label={newLosses.length} 
+                      size="small" 
+                      color="error"
+                      sx={{ fontWeight: 'bold' }}
+                    />
+                  </Box>
+                } 
+              />
             </Tabs>
 
             <Box sx={{ mb: 3 }}>
               {analysisTab === 0 && (
-                <Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      Won Opportunities in Period
-                    </Typography>
-                    <Box>
-                      <Chip
-                        label={`${newWins.length} wins`}
-                        size="small"
-                        color="success"
-                        variant="outlined"
-                        sx={{ mr: 1 }}
-                      />
-                      <Chip
-                        label={new Intl.NumberFormat("fr-FR", {
+                <Box sx={{ 
+                  backgroundColor: alpha(theme.palette.success.main, 0.05),
+                  borderRadius: 2,
+                  p: 2,
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.1)}`
+                }}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="subtitle1" fontWeight={600} color="success.main" gutterBottom>
+                        Won Opportunities in Selected Period
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Total number of opportunities won: <strong>{newWins.length}</strong>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Average win size: <strong>
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency", 
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                          }).format(newWins.length > 0 ? sumBy(newWins, "Gross Revenue") / newWins.length : 0)}
+                        </strong>
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
+                      <Typography variant="h5" fontWeight={700} color="success.main">
+                        {new Intl.NumberFormat("fr-FR", {
                           style: "currency",
                           currency: "EUR",
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
                         }).format(sumBy(newWins, "Gross Revenue"))}
-                        size="small"
-                        color="success"
-                      />
-                    </Box>
-                  </Box>
+                      </Typography>
+                      
+                      {/* I&O amount directly below the main figure */}
+                      <Typography variant="body1" fontWeight={600} color="primary.main" sx={{ mt: 0.5 }}>
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0))}
+                        {newWins.length > 0 && (
+                          <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
+                            ({(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0) / sumBy(newWins, "Gross Revenue") * 100).toFixed(1)}%)
+                          </Typography>
+                        )}
+                      </Typography>
+                    </Grid>
+                  </Grid>
                 </Box>
               )}
 
               {analysisTab === 1 && (
-                <Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      Lost Opportunities in Period
-                    </Typography>
-                    <Box>
-                      <Chip
-                        label={`${newLosses.length} losses`}
-                        size="small"
-                        color="error"
-                        variant="outlined"
-                        sx={{ mr: 1 }}
-                      />
-                      <Chip
-                        label={new Intl.NumberFormat("fr-FR", {
+                <Box sx={{ 
+                  backgroundColor: alpha(theme.palette.error.main, 0.05),
+                  borderRadius: 2,
+                  p: 2,
+                  border: `1px solid ${alpha(theme.palette.error.main, 0.1)}`
+                }}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="subtitle1" fontWeight={600} color="error.main" gutterBottom>
+                        Lost Opportunities in Selected Period
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Total number of opportunities lost: <strong>{newLosses.length}</strong>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Average loss size: <strong>
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency", 
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                          }).format(newLosses.length > 0 ? sumBy(newLosses, "Gross Revenue") / newLosses.length : 0)}
+                        </strong>
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
+                      <Typography variant="h5" fontWeight={700} color="error.main">
+                        {new Intl.NumberFormat("fr-FR", {
                           style: "currency",
                           currency: "EUR",
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
                         }).format(sumBy(newLosses, "Gross Revenue"))}
-                        size="small"
-                        color="error"
-                      />
-                    </Box>
-                  </Box>
+                      </Typography>
+                      
+                      {/* I&O amount directly below the main figure */}
+                      <Typography variant="body1" fontWeight={600} color="primary.main" sx={{ mt: 0.5 }}>
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0))}
+                        {newLosses.length > 0 && (
+                          <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
+                            ({(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0) / sumBy(newLosses, "Gross Revenue") * 100).toFixed(1)}%)
+                          </Typography>
+                        )}
+                      </Typography>
+                    </Grid>
+                  </Grid>
                 </Box>
               )}
             </Box>
