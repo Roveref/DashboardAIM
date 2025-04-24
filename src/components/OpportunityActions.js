@@ -80,7 +80,6 @@ const OpportunityActions = ({ opportunityId, opportunityName, opportunityDetails
   const [editingAction, setEditingAction] = useState(null);
   const [isAddingAction, setIsAddingAction] = useState(false);
   const [isAddingComment, setIsAddingComment] = useState(false);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   // Load actions and comments from localStorage on mount
   useEffect(() => {
@@ -115,6 +114,21 @@ const OpportunityActions = ({ opportunityId, opportunityName, opportunityDetails
       localStorage.setItem(`opportunity_comments_${opportunityId}`, JSON.stringify(comments));
     }
   }, [comments, opportunityId]);
+
+  // Set up event listener for export button click
+  useEffect(() => {
+    const handleExportEvent = (event) => {
+      if (event.detail.opportunityId === opportunityId) {
+        downloadMinutes();
+      }
+    };
+    
+    window.addEventListener('exportOpportunityData', handleExportEvent);
+    
+    return () => {
+      window.removeEventListener('exportOpportunityData', handleExportEvent);
+    };
+  }, [opportunityId, actions, comments, opportunityDetails]);
 
   const handleAddAction = () => {
     if (!newAction.description || !newAction.owner) return;
@@ -271,164 +285,91 @@ const OpportunityActions = ({ opportunityId, opportunityName, opportunityDetails
     }
   };
 
+  // Updated version of generateMinutes to include only the current opportunity data
   const generateMinutes = () => {
-    const allActions = getAllOpportunityActions();
-    const allComments = getAllOpportunityComments();
+    const thisOpportunity = {
+      id: opportunityId,
+      name: opportunityName,
+      ...opportunityDetails
+    };
+
+    // Get actions and comments for this opportunity only
+    const theseActions = actions;
+    const theseComments = comments;
     
-    // Group actions by client/account first, then by opportunity
-    const groupedByClient = {};
+    let minutes = `# Opportunity Report: ${opportunityName}\n`;
+    minutes += `Date: ${new Date().toLocaleDateString('fr-FR')}\n\n`;
     
-    allActions.forEach(action => {
-      const clientName = action.opportunityAccount || 'Unknown Client';
+    // Add opportunity details section
+    minutes += `## Opportunity Details\n\n`;
+    minutes += `- **Opportunity ID**: ${opportunityId}\n`;
+    minutes += `- **Name**: ${opportunityName}\n`;
+    minutes += `- **Status**: ${opportunityDetails.Status || 'N/A'}\n`;
+    minutes += `- **Account**: ${opportunityDetails.Account || 'N/A'}\n`;
+    minutes += `- **Revenue**: ${typeof opportunityDetails.Revenue === 'number' 
+      ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(opportunityDetails.Revenue)
+      : opportunityDetails.Revenue || 'N/A'}\n`;
+    minutes += `- **Service Line**: ${opportunityDetails.ServiceLine || 'N/A'}\n\n`;
+    
+    // Add team information
+    minutes += `## Team Information\n\n`;
+    minutes += `- **Engagement Manager**: ${opportunityDetails.EM || 'N/A'}\n`;
+    minutes += `- **Engagement Partner**: ${opportunityDetails.EP || 'N/A'}\n`;
+    minutes += `- **Manager**: ${opportunityDetails.Manager || 'N/A'}\n`;
+    minutes += `- **Partner**: ${opportunityDetails.Partner || 'N/A'}\n\n`;
+    
+    // Add actions section if there are any
+    if (theseActions.length > 0) {
+      minutes += `## Action Items\n\n`;
       
-      if (!groupedByClient[clientName]) {
-        groupedByClient[clientName] = {};
-      }
-      
-      const oppName = action.opportunityName || `Opportunity ${action.opportunityId}`;
-      
-      if (!groupedByClient[clientName][oppName]) {
-        groupedByClient[clientName][oppName] = {
-          actions: [],
-          comments: []
+      theseActions.forEach(action => {
+        const priorityLabels = {
+          'high': '🔴 High',
+          'medium': '🟠 Medium',
+          'low': '🟢 Low'
         };
-      }
-      
-      groupedByClient[clientName][oppName].actions.push(action);
-    });
-    
-    // Group comments by client/account and opportunity
-    allComments.forEach(comment => {
-      // Get the opportunity ID from the comment
-      const oppId = comment.opportunityId;
-      if (!oppId) return;
-      
-      // Find the matching opportunity in groupedByClient
-      let found = false;
-      
-      Object.entries(groupedByClient).forEach(([clientName, opportunities]) => {
-        Object.entries(opportunities).forEach(([oppName, data]) => {
-          // Check if any action in this opportunity has the same ID
-          if (data.actions.some(action => action.opportunityId === oppId)) {
-            if (!data.comments) {
-              data.comments = [];
-            }
-            data.comments.push(comment);
-            found = true;
-          }
-        });
+        const priorityText = priorityLabels[action.priority] || action.priority;
+        const statusIcon = action.status === 'completed' ? '✅' : '⏳';
+        
+        minutes += `- ${statusIcon} **${action.description}**\n`;
+        minutes += `  - Owner: ${action.owner}\n`;
+        minutes += `  - Due Date: ${formatDate(action.dueDate)}\n`;
+        minutes += `  - Priority: ${priorityText}\n`;
+        minutes += `  - Created: ${formatDateTime(action.createdAt)}\n`;
+        minutes += `\n`;
       });
-      
-      // If not found in existing structure, try to add it
-      if (!found) {
-        // Try to find the opportunity details to get the client name
-        const oppDetails = allActions.find(action => action.opportunityId === oppId);
-        const clientName = oppDetails?.opportunityAccount || 'Unknown Client';
-        const oppName = oppDetails?.opportunityName || `Opportunity ${oppId}`;
-        
-        if (!groupedByClient[clientName]) {
-          groupedByClient[clientName] = {};
-        }
-        
-        if (!groupedByClient[clientName][oppName]) {
-          groupedByClient[clientName][oppName] = {
-            actions: [],
-            comments: []
-          };
-        }
-        
-        groupedByClient[clientName][oppName].comments.push(comment);
-      }
-    });
+    }
     
-    let minutes = `# Pipeline Review Action Items\nDate: ${new Date().toLocaleDateString()}\n\n`;
-    
-    // Iterate through clients
-    Object.entries(groupedByClient).forEach(([clientName, opportunities]) => {
-      minutes += `## Client: ${clientName}\n\n`;
+    // Add comments section if there are any
+    if (theseComments.length > 0) {
+      minutes += `## Comments\n\n`;
       
-      // Iterate through opportunities for this client
-      Object.entries(opportunities).forEach(([oppName, data]) => {
-        const oppActions = data.actions;
-        const oppComments = data.comments || [];
-        
-        // Use the first action to get the opportunity details
-        const opportunityDetails = oppActions.length > 0 ? oppActions[0] : null;
-        
-        minutes += `### ${oppName}\n\n`;
-        
-        // Add opportunity details including ID, EM, EP, Manager, Partner and Status
-        if (opportunityDetails) {
-          minutes += `**Opportunity ID**: ${opportunityDetails.opportunityId || 'N/A'}\n`;
-          minutes += `**Status**: ${opportunityDetails.opportunityStatus || 'N/A'}\n`;
-          minutes += `**Engagement Manager**: ${opportunityDetails.opportunityEM || 'N/A'}\n`;
-          minutes += `**Engagement Partner**: ${opportunityDetails.opportunityEP || 'N/A'}\n`;
-          minutes += `**Manager**: ${opportunityDetails.opportunityManager || 'N/A'}\n`;
-          minutes += `**Partner**: ${opportunityDetails.opportunityPartner || 'N/A'}\n\n`;
-        }
-        
-        // Add actions section if there are any
-        if (oppActions.length > 0) {
-          minutes += `#### Action Items:\n\n`;
-          
-          oppActions.forEach(action => {
-            const priorityLabels = {
-              'high': '🔴 High',
-              'medium': '🟠 Medium',
-              'low': '🟢 Low'
-            };
-            const priorityText = priorityLabels[action.priority] || action.priority;
-            const statusIcon = action.status === 'completed' ? '✅' : '⏳';
-            
-            minutes += `- ${statusIcon} **${action.description}**\n`;
-            minutes += `  - Owner: ${action.owner}\n`;
-            minutes += `  - Due Date: ${formatDate(action.dueDate)}\n`;
-            minutes += `  - Priority: ${priorityText}\n`;
-            minutes += `\n`;
-          });
-        }
-        
-        // Add comments section if there are any
-        if (oppComments.length > 0) {
-          minutes += `#### Comments:\n\n`;
-          
-          oppComments.forEach(comment => {
-            minutes += `- ${comment.author} (${formatDateTime(comment.createdAt)}):\n`;
-            minutes += `  "${comment.text}"\n\n`;
-          });
-        }
+      theseComments.forEach(comment => {
+        minutes += `- ${comment.author} (${formatDateTime(comment.createdAt)}):\n`;
+        minutes += `  "${comment.text}"\n\n`;
       });
-    });
+    }
     
-    // Add general statistics
-    minutes += `## Meeting Statistics\n\n`;
-    minutes += `- Total Clients Reviewed: ${Object.keys(groupedByClient).length}\n`;
-    minutes += `- Total Opportunities Reviewed: ${Object.keys(allActions.reduce((acc, action) => {
-      acc[action.opportunityId] = true;
-      return acc;
-    }, {})).length}\n`;
-    minutes += `- Total Action Items: ${allActions.length}\n`;
-    minutes += `- Total Comments: ${allComments.length}\n`;
-    
-    const openActions = allActions.filter(a => a.status === 'open').length;
-    const completedActions = allActions.filter(a => a.status === 'completed').length;
-    
-    minutes += `- Open Action Items: ${openActions}\n`;
-    minutes += `- Completed Action Items: ${completedActions}\n`;
+    // Add statistics
+    minutes += `## Summary\n\n`;
+    minutes += `- Total Action Items: ${theseActions.length}\n`;
+    minutes += `- Open Action Items: ${theseActions.filter(a => a.status === 'open').length}\n`;
+    minutes += `- Completed Action Items: ${theseActions.filter(a => a.status === 'completed').length}\n`;
+    minutes += `- Total Comments: ${theseComments.length}\n`;
     
     // Add high priority actions summary
-    const highPriorityActions = allActions.filter(a => a.priority === 'high' && a.status === 'open');
+    const highPriorityActions = theseActions.filter(a => a.priority === 'high' && a.status === 'open');
     if (highPriorityActions.length > 0) {
-      minutes += `\n## High Priority Action Items Summary\n\n`;
+      minutes += `\n### High Priority Action Items\n\n`;
       highPriorityActions.forEach(action => {
-        minutes += `- **${action.description}** (Client: ${action.opportunityAccount}, ${action.opportunityName})\n`;
+        minutes += `- **${action.description}**\n`;
         minutes += `  - Owner: ${action.owner}, Due: ${formatDate(action.dueDate)}\n`;
       });
     }
     
     // Add footer
     minutes += `\n---\n`;
-    minutes += `Minutes generated on ${new Date().toLocaleString('fr-FR')}\n`;
+    minutes += `Report generated on ${new Date().toLocaleString('fr-FR')}\n`;
     
     return minutes;
   };
@@ -438,12 +379,10 @@ const OpportunityActions = ({ opportunityId, opportunityName, opportunityDetails
     const element = document.createElement('a');
     const file = new Blob([minutes], {type: 'text/markdown'});
     element.href = URL.createObjectURL(file);
-    element.download = `pipeline_review_minutes_${new Date().toISOString().split('T')[0]}.md`;
+    element.download = `opportunity_report_${opportunityId}_${new Date().toISOString().split('T')[0]}.md`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
-    
-    setIsExportDialogOpen(false);
   };
 
   const getStatusIcon = (status) => {
@@ -479,82 +418,62 @@ const OpportunityActions = ({ opportunityId, opportunityName, opportunityDetails
         boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          {activeTab === 0 ? (
+          <Box
+            sx={{ 
+              minWidth: '140px',
+              display: 'flex', 
+              alignItems: 'center',
+              justifyContent: 'flex-start'
+            }}
+          >
             <Typography 
               variant="subtitle1"
-              fontWeight={600}
-              color="primary.main" 
+              fontWeight={activeTab === 0 ? 600 : 500}
+              color={activeTab === 0 ? "primary.main" : "text.secondary"}
               sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
               onClick={() => setActiveTab(0)}
             >
               <AssignmentIcon fontSize="small" sx={{ mr: 1 }} />
               Actions ({actions.length})
             </Typography>
-          ) : (
-            <Typography 
-              variant="subtitle1"
-              fontWeight={500}
-              color="text.secondary" 
-              sx={{ display: 'flex', alignItems: 'center', mr: 4, cursor: 'pointer' }}
-              onClick={() => setActiveTab(0)}
-            >
-              <AssignmentIcon fontSize="small" sx={{ mr: 1 }} />
-              Actions ({actions.length})
-            </Typography>
-          )}
+          </Box>
           
-          {activeTab === 1 ? (
+          <Box
+            sx={{ 
+              minWidth: '160px',
+              display: 'flex', 
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              ml: 4
+            }}
+          >
             <Typography 
               variant="subtitle1"
-              fontWeight={600}
-              color="primary.main" 
-              sx={{ display: 'flex', alignItems: 'center', ml: 4, cursor: 'pointer' }}
+              fontWeight={activeTab === 1 ? 600 : 500}
+              color={activeTab === 1 ? "primary.main" : "text.secondary"}
+              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
               onClick={() => setActiveTab(1)}
             >
               <ChatIcon fontSize="small" sx={{ mr: 1 }} />
               Comments ({comments.length})
             </Typography>
-          ) : (
-            <Typography 
-              variant="subtitle1"
-              fontWeight={500}
-              color="text.secondary" 
-              sx={{ display: 'flex', alignItems: 'center', ml: 4, cursor: 'pointer' }}
-              onClick={() => setActiveTab(1)}
-            >
-              <ChatIcon fontSize="small" sx={{ mr: 1 }} />
-              Comments ({comments.length})
-            </Typography>
-          )}
+          </Box>
         </Box>
         
         <Box>
           {activeTab === 0 && (
-            <Box>
-              {actions.length > 0 && (
-                <Button 
-                  size="small"
-                  variant="outlined"
-                  startIcon={<DownloadIcon />}
-                  onClick={() => setIsExportDialogOpen(true)}
-                  sx={{ mr: 1 }}
-                >
-                  Export
-                </Button>
-              )}
-              <Button 
-                size="small" 
-                variant="contained" 
-                startIcon={<AddIcon />}
-                onClick={() => {
-                  setIsAddingAction(true);
-                  setEditingAction(null);
-                }}
-                color="primary"
-              >
-                Add Action
-              </Button>
-            </Box>
+            <Button 
+              size="small" 
+              variant="contained" 
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setIsAddingAction(true);
+                setEditingAction(null);
+              }}
+              color="primary"
+            >
+              Add Action
+            </Button>
           )}
           
           {activeTab === 1 && (
@@ -980,41 +899,6 @@ const OpportunityActions = ({ opportunityId, opportunityName, opportunityDetails
           )}
         </Box>
       )}
-
-      {/* Export Dialog */}
-      <Dialog
-        open={isExportDialogOpen}
-        onClose={() => setIsExportDialogOpen(false)}
-        aria-labelledby="export-dialog-title"
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
-          }
-        }}
-      >
-        <DialogTitle id="export-dialog-title" sx={{ pb: 1 }}>
-          Export Actions
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Do you want to export just the actions for this opportunity, or all actions from all opportunities?
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setIsExportDialogOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button 
-            onClick={downloadMinutes} 
-            color="primary" 
-            variant="contained" 
-            startIcon={<DownloadIcon />}
-          >
-            Export All
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };
