@@ -22,12 +22,15 @@ import {
   TableSortLabel,
   Button,
 } from "@mui/material";
+import DownloadIcon from '@mui/icons-material/Download';
+import DescriptionIcon from '@mui/icons-material/Description';
 import InfoIcon from "@mui/icons-material/Info";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import FilterListOffIcon from "@mui/icons-material/FilterListOff";
 import MeetingMinutes from "./MeetingMinutes"; // Import the meeting minutes component
 import OpportunityActions from "./OpportunityActions"; // Import the actions component
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 
 // Status colors mapping
 const statusColors = {
@@ -84,6 +87,202 @@ const calculateRevenueWithSegmentLogic = (item) => {
   return item['Gross Revenue'] || 0;
 };
 
+
+const exportOpportunities = (data, isFiltered = false) => {
+  // Ensure data is an array
+  const opportunitiesData = Array.isArray(data) ? data : [];
+
+  // If no data, show an alert and return
+  if (opportunitiesData.length === 0) {
+    alert('No opportunities to export.');
+    return;
+  }
+
+  // Create a formatted markdown file of all displayed opportunities
+  let markdownContent = `# Opportunity List Export\n`;
+  markdownContent += `Date: ${new Date().toLocaleDateString('fr-FR')}\n`;
+  markdownContent += `Total Opportunities: ${opportunitiesData.length}\n\n`;
+  
+  if (isFiltered) {
+    markdownContent += `> Note: This is a filtered list of opportunities\n\n`;
+  }
+  
+  // Group opportunities by client with defensive checks
+  const opportunitiesByClient = opportunitiesData.reduce((acc, opp) => {
+    const client = (opp && opp["Account"]) || "Unknown Client";
+    if (!acc[client]) {
+      acc[client] = [];
+    }
+    acc[client].push(opp);
+    return acc;
+  }, {});
+  
+  // Add opportunities grouped by client
+  Object.entries(opportunitiesByClient).forEach(([client, opportunities]) => {
+    markdownContent += `## Client: ${client}\n\n`;
+    
+    opportunities.forEach(opp => {
+      // Defensive checks for each opportunity
+      if (!opp) return;
+
+      markdownContent += `### ${opp["Opportunity"] || "Unnamed Opportunity"} (ID: ${opp["Opportunity ID"] || "N/A"})\n\n`;
+      
+      // Status
+      markdownContent += `**Status**: ${(opp["Status"] && statusText[opp["Status"]]) || `Status ${opp["Status"] || "Unknown"}`}\n\n`;
+      
+      // Financial Details
+      markdownContent += `#### Financial Details\n\n`;
+      markdownContent += `- **Gross Revenue**: ${typeof opp["Gross Revenue"] === "number" 
+        ? new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(opp["Gross Revenue"])
+        : opp["Gross Revenue"] || "N/A"}\n`;
+      
+      // Calculate I&O Revenue
+      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp);
+      markdownContent += `- **I&O Revenue**: ${new Intl.NumberFormat("fr-FR", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(calculatedRevenue)}\n`;
+      
+      // Allocation information if present
+      if (opp["Is Allocated"]) {
+        markdownContent += `- **Allocated to**: ${opp["Allocated Service Line"] || "N/A"}\n`;
+        markdownContent += `- **Allocation Percentage**: ${opp["Allocation Percentage"] || "N/A"}%\n`;
+        markdownContent += `- **Allocated Amount**: ${typeof opp["Allocated Gross Revenue"] === "number"
+          ? new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(opp["Allocated Gross Revenue"])
+          : opp["Allocated Gross Revenue"] || "N/A"}\n`;
+      }
+      
+      // Contribution margin if available
+      if (opp["CM1%"]) {
+        markdownContent += `- **Contribution Margin**: ${opp["CM1%"]}%\n`;
+      }
+      
+      markdownContent += `\n`;
+      
+      // Team Information
+      markdownContent += `#### Team Information\n\n`;
+      markdownContent += `- **Engagement Manager**: ${opp["EM"] || "Not assigned"}\n`;
+      markdownContent += `- **Engagement Partner**: ${opp["EP"] || "Not assigned"}\n`;
+      markdownContent += `- **Manager**: ${opp["Manager"] || "Not assigned"}\n`;
+      markdownContent += `- **Partner**: ${opp["Partner"] || "Not assigned"}\n\n`;
+      
+      // Service Details
+      markdownContent += `#### Service Offerings\n\n`;
+      
+      // Primary Service
+      if (opp["Service Line 1"]) {
+        markdownContent += `##### Primary Service\n`;
+        markdownContent += `- **Service Line**: ${opp["Service Line 1"]}\n`;
+        markdownContent += `- **Service Offering**: ${opp["Service Offering 1"] || "N/A"}\n`;
+        markdownContent += `- **Percentage**: ${opp["Service Offering 1 %"] || 0}%\n`;
+        markdownContent += `- **Amount**: ${new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format((opp["Gross Revenue"] || 0) * (opp["Service Offering 1 %"] || 0) / 100)}\n\n`;
+      }
+      
+      // Secondary Service
+      if (opp["Service Line 2"] && opp["Service Line 2"] !== "-") {
+        markdownContent += `##### Secondary Service\n`;
+        markdownContent += `- **Service Line**: ${opp["Service Line 2"]}\n`;
+        markdownContent += `- **Service Offering**: ${opp["Service Offering 2"] || "N/A"}\n`;
+        markdownContent += `- **Percentage**: ${opp["Service Offering 2 %"] || 0}%\n`;
+        markdownContent += `- **Amount**: ${new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format((opp["Gross Revenue"] || 0) * (opp["Service Offering 2 %"] || 0) / 100)}\n\n`;
+      }
+      
+      // Tertiary Service
+      if (opp["Service Line 3"] && opp["Service Line 3"] !== "-") {
+        markdownContent += `##### Tertiary Service\n`;
+        markdownContent += `- **Service Line**: ${opp["Service Line 3"]}\n`;
+        markdownContent += `- **Service Offering**: ${opp["Service Offering 3"] || "N/A"}\n`;
+        markdownContent += `- **Percentage**: ${opp["Service Offering 3 %"] || 0}%\n`;
+        markdownContent += `- **Amount**: ${new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format((opp["Gross Revenue"] || 0) * (opp["Service Offering 3 %"] || 0) / 100)}\n\n`;
+      }
+      
+      // Additional Information
+      markdownContent += `#### Additional Information\n\n`;
+      markdownContent += `- **Project Type**: ${opp["Project Type"] || "N/A"}\n`;
+      markdownContent += `- **Creation Date**: ${opp["Creation Date"] ? new Date(opp["Creation Date"]).toLocaleDateString('fr-FR') : "N/A"}\n`;
+      markdownContent += `- **Last Status Change**: ${opp["Last Status Change Date"] ? new Date(opp["Last Status Change Date"]).toLocaleDateString('fr-FR') : "N/A"}\n\n`;
+      
+      // Separator between opportunities
+      markdownContent += `---\n\n`;
+    });
+  });
+  
+  // Add summary at the end
+  markdownContent += `## Summary\n\n`;
+  markdownContent += `- **Total Clients**: ${Object.keys(opportunitiesByClient).length}\n`;
+  markdownContent += `- **Total Opportunities**: ${opportunitiesData.length}\n`;
+  
+  // Count statuses
+  const statusCounts = opportunitiesData.reduce((acc, opp) => {
+    if (!opp) return acc;
+    const statusName = (opp["Status"] && statusText[opp["Status"]]) || `Status ${opp["Status"]}`;
+    acc[statusName] = (acc[statusName] || 0) + 1;
+    return acc;
+  }, {});
+  
+  markdownContent += `\n#### Opportunities by Status\n\n`;
+  Object.entries(statusCounts).forEach(([status, count]) => {
+    markdownContent += `- **${status}**: ${count}\n`;
+  });
+  
+  // Calculate total revenue
+  const totalRevenue = opportunitiesData.reduce((total, opp) => total + (opp && opp["Gross Revenue"] || 0), 0);
+  const totalIORevenue = opportunitiesData.reduce((total, opp) => total + calculateRevenueWithSegmentLogic(opp), 0);
+  
+  markdownContent += `\n#### Financial Summary\n\n`;
+  markdownContent += `- **Total Gross Revenue**: ${new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(totalRevenue)}\n`;
+  markdownContent += `- **Total I&O Revenue**: ${new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(totalIORevenue)}\n`;
+  
+  // Add export footer
+  markdownContent += `\n---\n`;
+  markdownContent += `Generated on ${new Date().toLocaleString('fr-FR')}\n`;
+  
+  // Download the file
+  const element = document.createElement('a');
+  const file = new Blob([markdownContent], {type: 'text/markdown'});
+  element.href = URL.createObjectURL(file);
+  element.download = `opportunities_export_${new Date().toISOString().split('T')[0]}.md`;
+  document.body.appendChild(element);
+  element.click();
+  document.body.removeChild(element);
+};
 // Row component with expandable details
 const OpportunityRow = ({ row, isSelected, onRowClick }) => {
   const [open, setOpen] = useState(false);
@@ -305,19 +504,48 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                       {new Date(row["Creation Date"]).toLocaleDateString('fr-FR')}
                     </Typography>
                   </Box>
-                  <Chip
-                    label={
-                      statusText[row["Status"]] || `Status ${row["Status"]}`
-                    }
-                    color={statusColors[row["Status"]] || "default"}
-                    size="medium"
-                    sx={{ 
-                      fontWeight: 600, 
-                      px: 1,
-                      boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.1)}`,
-                      borderRadius: '8px',
-                    }}
-                  />
+                  {/* Add Export Button here */}
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+    <Chip
+      label={
+        statusText[row["Status"]] || `Status ${row["Status"]}`
+      }
+      color={statusColors[row["Status"]] || "default"}
+      size="medium"
+      sx={{ 
+        fontWeight: 600, 
+        px: 1,
+        boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.1)}`,
+        borderRadius: '8px',
+      }}
+    />
+    {/* Icon-only Export Button */}
+    <IconButton
+      size="small"
+      color="primary"
+      aria-label="export opportunity data"
+      onClick={(e) => {
+        e.stopPropagation();
+        // Call the exportOpportunityData function
+        if (typeof window !== 'undefined') {
+          const event = new CustomEvent('exportOpportunityData', {
+            detail: { opportunityId: row["Opportunity ID"] }
+          });
+          window.dispatchEvent(event);
+        }
+      }}
+      sx={{ 
+        ml: 1.5,
+        boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.08)}`,
+        "&:hover": {
+          backgroundColor: alpha(theme.palette.primary.main, 0.1),
+          boxShadow: `0 2px 6px ${alpha(theme.palette.common.black, 0.12)}`,
+        }
+      }}
+    >
+      <DownloadIcon fontSize="small" />
+    </IconButton>
+  </Box>
                 </Box>
 
                 {/* Total Opportunity Amount - Improved Allocation Display */}
@@ -894,6 +1122,8 @@ const OpportunityList = ({
   const [order, setOrder] = useState("desc");
   const [orderBy, setOrderBy] = useState("Opportunity ID");
 
+  const opportunitiesData = Array.isArray(data) ? data : [];
+
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
@@ -1065,9 +1295,55 @@ const OpportunityList = ({
               </Box>
             )}
           </Box>
-          
+            {/* Export Opportunities button - only show when there's data */}
+            {opportunitiesData.length > 0 && (
+        <IconButton
+          size="small"
+          color="primary"
+          aria-label="export opportunities"
+          onClick={() => exportOpportunities(opportunitiesData, isFiltered)}
+          title="Export Opportunities List"
+          sx={{ 
+            ml: 1,
+            boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.08)}`,
+            "&:hover": {
+              backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              boxShadow: `0 2px 6px ${alpha(theme.palette.common.black, 0.12)}`,
+            }
+          }}
+    >
+      <FormatListBulletedIcon fontSize="small" />
+    </IconButton>
+  )}
           {/* Meeting Minutes button - only show when there's data */}
-          {data.length > 0 && <MeetingMinutes />}
+          {data.length > 0 && (
+      <IconButton
+        size="small"
+        color="primary"
+        aria-label="meeting minutes"
+        onClick={() => {
+          // This will use the existing MeetingMinutes component's functionality
+          document.getElementById('meeting-minutes-button')?.click();
+        }}
+        sx={{ 
+          ml: 1.5,
+          boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.08)}`,
+          "&:hover": {
+            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+            boxShadow: `0 2px 6px ${alpha(theme.palette.common.black, 0.12)}`,
+          }
+        }}
+      >
+        <DescriptionIcon fontSize="small" />
+      </IconButton>
+    )}
+    
+    {/* Hidden original MeetingMinutes component to maintain functionality */}
+    {data.length > 0 && (
+      <Box sx={{ display: 'none' }}>
+        <MeetingMinutes id="meeting-minutes-button" />
+      </Box>
+    )}
 
           <Tooltip title="Click on rows to select. Expand rows for more details.">
             <InfoIcon color="action" fontSize="small" sx={{ ml: 1 }} />
