@@ -1976,15 +1976,6 @@ const StaffingTab = ({ data, loading, staffingFileName, staffingFileData }) => {
                 </Grid>
               </Grid>
 
-              {/* Waterfall chart */}
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Time Allocation Breakdown
-                </Typography>
-                <UtilizationWaterfallChart
-                  metrics={calculateBusinessMetrics()}
-                />
-              </Box>
 
               {/* Hours breakdown */}
               <Divider sx={{ my: 3 }} />
