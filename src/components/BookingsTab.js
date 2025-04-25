@@ -40,6 +40,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import AnimatedRankings from "./AnimatedRankings";
 
 import {
   ComposedChart,
@@ -1730,6 +1731,9 @@ useEffect(() => {
           </Paper>
         </Grid>
 
+        <Grid item xs={12}>
+  <AnimatedRankings data={data} />
+</Grid>
         {/* Period Filter MOVED HERE - between chart and Top 10 accounts */}
         <Grid item xs={12}>
           <PeriodFilter
