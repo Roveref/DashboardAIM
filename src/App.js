@@ -21,11 +21,14 @@ import {
   Autocomplete,
   Chip,
   Grid,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import { alpha, darken, lighten } from "@mui/material/styles";
 import ClearIcon from "@mui/icons-material/Clear";
 import BusinessIcon from "@mui/icons-material/Business";
 import PeopleIcon from "@mui/icons-material/People";
+import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
 import PipelineTab from "./components/PipelineTab";
 import BookingsTab from "./components/BookingsTab";
 import ServiceLinesTab from "./components/ServiceLinesTab";
@@ -69,6 +72,9 @@ function App() {
     opportunity: null,
     staffing: null,
   });
+  
+  // Add state for revenue toggle
+  const [showNetRevenue, setShowNetRevenue] = useState(false);
 
   // Store the actual file data for the staffing file
   const [staffingFileData, setStaffingFileData] = useState(null);
@@ -472,6 +478,11 @@ function App() {
   // Account filter change handler
   const handleAccountChange = (event, newValue) => {
     handleFilterChange({ accounts: newValue || [] }); // Add safety check for newValue
+  };
+
+  // Toggle between gross and net revenue
+  const handleRevenueToggle = () => {
+    setShowNetRevenue(!showNetRevenue);
   };
 
   // Filter data based on active tab
@@ -902,6 +913,39 @@ function App() {
                 </Typography>
               </Box>
 
+              {/* Add Revenue Toggle Switch */}
+              {opportunityData.length > 0 && (
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={showNetRevenue}
+                      onChange={handleRevenueToggle}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <MonetizationOnIcon sx={{ mr: 0.5, fontSize: 20 }} />
+                      <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.875rem' }}>
+                        {showNetRevenue ? "Net Revenue" : "Gross Revenue"}
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ 
+                    mr: 2,
+                    ml: 1,
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    borderRadius: 2,
+                    px: 1,
+                    py: 0.25,
+                    '& .MuiTypography-root': {
+                      fontWeight: 600,
+                      fontSize: '0.875rem'
+                    }
+                  }}
+                />
+              )}
+
               {/* Center - Tabs */}
               {opportunityData.length > 0 && (
                 <Tabs
@@ -1216,6 +1260,7 @@ function App() {
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
+                      showNetRevenue={showNetRevenue}
                     />
                   )}
                   {activeTab === 1 && (
@@ -1224,6 +1269,7 @@ function App() {
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
+                      showNetRevenue={showNetRevenue}
                     />
                   )}
                   {activeTab === 2 && (
@@ -1232,6 +1278,7 @@ function App() {
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
+                      showNetRevenue={showNetRevenue}
                     />
                   )}
                   {activeTab === 3 && (
@@ -1240,6 +1287,7 @@ function App() {
                       loading={loading}
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
+                      showNetRevenue={showNetRevenue}
                     />
                   )}
                   {activeTab === 4 &&
@@ -1250,6 +1298,7 @@ function App() {
                         loading={loading}
                         staffingFileName={currentFiles.staffing}
                         staffingFileData={staffingFileData}
+                        showNetRevenue={showNetRevenue}
                       />
                     )}
                 </Box>
