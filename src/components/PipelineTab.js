@@ -53,14 +53,14 @@ const ALL_STATUSES = [
 
 
 // Revenue calculation function to match previous implementation
-const calculateRevenueWithSegmentLogic = (item) => {
+const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
   // Check if segment code is AUTO, CLR, or IEM
   const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
   const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
 
-  // If special segment code, return full gross revenue
+  // If special segment code, return full revenue based on toggle
   if (isSpecialSegmentCode) {
-    return item['Gross Revenue'] || 0;
+    return useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
   }
 
   // Check each service line (1, 2, and 3)
@@ -70,10 +70,13 @@ const calculateRevenueWithSegmentLogic = (item) => {
     { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
   ];
 
+  // Get the base revenue value based on toggle
+  const baseRevenue = useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+
   // Calculate total allocated revenue for Operations
   const operationsAllocation = serviceLines.reduce((total, service) => {
     if (service.line === 'Operations') {
-      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+      return total + (baseRevenue * (service.percentage / 100));
     }
     return total;
   }, 0);
@@ -83,13 +86,13 @@ const calculateRevenueWithSegmentLogic = (item) => {
     return operationsAllocation;
   }
 
-  // If no specific Operations allocation, return full gross revenue
-  return item['Gross Revenue'] || 0;
+  // If no specific Operations allocation, return full revenue
+  return baseRevenue;
 };
 
 
 
-const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
+const PipelineTab = ({ data, loading, onSelection, selectedOpportunities, showNetRevenue = false }) => {
   const [pipelineByStatus, setPipelineByStatus] = useState([]);
   const [pipelineByServiceLine, setPipelineByServiceLine] = useState([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -152,8 +155,8 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       }
   
       // Calculate the revenue using the original and calculated methods
-      const originalRevenue = opp["Gross Revenue"] || 0;
-      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp);
+      const originalRevenue = showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0);
+      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
   
       // Add to the right status category using original and calculated revenues
       if (statusCategories.early.includes(opp.Status)) {
@@ -207,18 +210,18 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
   // Replace the current stackedServiceLineData with:
   const calculateMedianOpportunitySize = (opportunities) => {
     if (!opportunities || opportunities.length === 0) return 0;
-
+  
     // Get revenue values and sort them
     const revenueValues = opportunities
       .map((opp) => {
         return opp["Is Allocated"]
-          ? opp["Allocated Gross Revenue"] || 0
-          : opp["Gross Revenue"] || 0;
+          ? (showNetRevenue ? opp["Allocated Net Revenue"] : opp["Allocated Gross Revenue"]) || 0
+          : (showNetRevenue ? opp["Net Revenue"] : opp["Gross Revenue"]) || 0;
       })
       .sort((a, b) => a - b);
-
+  
     const len = revenueValues.length;
-
+  
     // Calculate median
     let median;
     if (len % 2 === 0) {
@@ -228,17 +231,17 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       // Odd number of items
       median = revenueValues[Math.floor(len / 2)];
     }
-
+  
     return median;
   };
   const calculateFilteredMedianOpportunitySize = (opportunities) => {
     if (!opportunities || opportunities.length === 0) return 0;
-
+  
     // Get allocated revenue values and sort them
     const revenueValues = opportunities
       .map((opp) => {
         // Use allocated revenue values for the filtered median
-        return opp["Allocated Gross Revenue"] || 0;
+        return showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0);
       })
       .sort((a, b) => a - b);
 
@@ -265,7 +268,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
         max: 100000,
         count: 0,
         value: 0,
-        calculatedValue: 0, // Add calculated value
+        calculatedValue: 0,
         color: theme.palette.primary.light,
       },
       {
@@ -274,7 +277,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
         max: 500000,
         count: 0,
         value: 0,
-        calculatedValue: 0, // Add calculated value
+        calculatedValue: 0,
         color: theme.palette.primary.main,
       },
       {
@@ -283,7 +286,7 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
         max: Infinity,
         count: 0,
         value: 0,
-        calculatedValue: 0, // Add calculated value
+        calculatedValue: 0,
         color: theme.palette.primary.dark,
       },
     ];
@@ -291,17 +294,17 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
     // Calculate counts and values for each range
     opportunities.forEach((opp) => {
       const revenue = opp["Is Allocated"]
-        ? opp["Allocated Gross Revenue"] || 0
-        : opp["Gross Revenue"] || 0;
+        ? (showNetRevenue ? opp["Allocated Net Revenue"] : opp["Allocated Gross Revenue"]) || 0
+        : (showNetRevenue ? opp["Net Revenue"] : opp["Gross Revenue"]) || 0;
       
-      // Also calculate the I&O allocation value  
-      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp);
+      // Calculate the I&O allocation value  
+      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
   
       for (const range of ranges) {
         if (revenue >= range.min && revenue < range.max) {
           range.count++;
           range.value += revenue;
-          range.calculatedValue += calculatedRevenue; // Add the calculated value
+          range.calculatedValue += calculatedRevenue;
           break;
         }
       }
@@ -330,61 +333,64 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
       data.length > 0 &&
       data.some(
         (item) =>
-          item["Allocated Gross Revenue"] !== undefined ||
+          (showNetRevenue ? item["Allocated Net Revenue"] : item["Allocated Gross Revenue"]) !== undefined ||
           (item["Allocation Percentage"] !== undefined &&
-            item["Gross Revenue"] !== undefined)
+            (showNetRevenue ? item["Net Revenue"] : item["Gross Revenue"]) !== undefined)
       );
   
     const isUsingAllocation =
       hasAllocatedData && data[0] && data[0]["Allocated Service Line"];
     setIsAllocated(isUsingAllocation);
-
+  
     // Calculate total pipeline revenue with original and calculated methods
     const originalTotalRevenue = sumBy(
       data,
-      data[0] && data[0]["Is Allocated"]
-        ? "Allocated Gross Revenue"
-        : "Gross Revenue"
+      (item) => {
+        if (item["Is Allocated"]) {
+          return showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0);
+        } else {
+          return showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0);
+        }
+      }
     );
+    
     const calculatedTotalRevenue = data.reduce(
-      (sum, item) => sum + calculateRevenueWithSegmentLogic(item),
+      (sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue),
       0
     );
-
+  
     setTotalRevenue(originalTotalRevenue);
-    // Add a new state for calculated total revenue
     setCalculatedTotalRevenue(calculatedTotalRevenue);
-
+  
     // Calculate allocated revenue
     let allocated = 0;
     data.forEach((item) => {
-      const allocatedGrossRevenue =
-        typeof item["Allocated Gross Revenue"] === "number"
-          ? item["Allocated Gross Revenue"]
-          : 0;
-      allocated += allocatedGrossRevenue;
+      const allocatedRevenue = showNetRevenue 
+        ? (typeof item["Allocated Net Revenue"] === "number" ? item["Allocated Net Revenue"] : 0)
+        : (typeof item["Allocated Gross Revenue"] === "number" ? item["Allocated Gross Revenue"] : 0);
+      allocated += allocatedRevenue;
     });
     setAllocatedRevenue(allocated);
-
+  
     // Modified to ensure ALL statuses are represented
     const byStatus = ALL_STATUSES.map((statusInfo) => {
       // Find opportunities for this specific status
       const opportunities = data.filter(
         (item) => item["Status"] === statusInfo.statusNumber
       );
-
+  
       // Calculate total revenue for this status
       const originalValue = opportunities.reduce((sum, item) => {
         const revenue = isUsingAllocation
-          ? item["Allocated Gross Revenue"] || 0
-          : item["Gross Revenue"] || 0;
+          ? (showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0))
+          : (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0));
         return sum + revenue;
       }, 0);
-
+  
       const calculatedValue = opportunities.reduce((sum, item) => {
-        return sum + calculateRevenueWithSegmentLogic(item);
+        return sum + calculateRevenueWithSegmentLogic(item, showNetRevenue);
       }, 0);
-
+  
       return {
         status: statusInfo.status,
         originalValue: originalValue,
@@ -393,21 +399,23 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
         statusNumber: statusInfo.statusNumber,
       };
     });
-
+  
     setPipelineByStatus(byStatus);
-
+  
     // Group data by service line for pie chart
     const byServiceLine = Object.entries(groupDataBy(data, "Service Line 1"))
       .map(([serviceLine, opportunities]) => {
-        const originalValue = sumBy(
-          opportunities,
-          isUsingAllocation ? "Allocated Gross Revenue" : "Gross Revenue"
-        );
+        const originalValue = opportunities.reduce((sum, item) => {
+          return sum + (isUsingAllocation 
+            ? (showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0))
+            : (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)));
+        }, 0);
+        
         const calculatedValue = opportunities.reduce(
-          (sum, item) => sum + calculateRevenueWithSegmentLogic(item),
+          (sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue),
           0
         );
-
+  
         return {
           name: serviceLine,
           originalValue: originalValue,
@@ -416,106 +424,108 @@ const PipelineTab = ({ data, loading, onSelection, selectedOpportunities }) => {
         };
       })
       .sort((a, b) => b.originalValue - a.originalValue); // Sort by original value descending
-    setPipelineByServiceLine(byServiceLine);
-}, [data, loading, filteredOpportunities.length, activeFilterType]);
-
-
-useEffect(() => {
-  if (!filteredOpportunities || filteredOpportunities.length === 0) return;
-
-  // Add a cleanup function to prevent stale updates
-  const isComponentMounted = true;
-
-  // Calculate totals with the current filtered data
-  const currentTotalRevenue = filteredOpportunities.reduce(
-    (sum, item) => sum + (item["Gross Revenue"] || 0),
-    0
-  );
-  
-  const currentCalculatedTotalRevenue = filteredOpportunities.reduce(
-    (sum, item) => sum + calculateRevenueWithSegmentLogic(item),
-    0
-  );
-
-  // Calculate allocated revenue based on filtered opportunities - THIS IS THE FIX
-  let currentAllocatedRevenue = 0;
-  filteredOpportunities.forEach((item) => {
-    const allocatedGrossRevenue =
-      typeof item["Allocated Gross Revenue"] === "number"
-        ? item["Allocated Gross Revenue"]
-        : 0;
-    currentAllocatedRevenue += allocatedGrossRevenue;
-  });
-
-  // Only update if the component is still mounted
-  if (isComponentMounted) {
-    setTotalRevenue(currentTotalRevenue);
-    setCalculatedTotalRevenue(currentCalculatedTotalRevenue);
-    setAllocatedRevenue(currentAllocatedRevenue); // Update allocated revenue with filtered value
-  }
-
-  // Calculate pipeline by status with the current filtered data
-  const byStatus = ALL_STATUSES.map((statusInfo) => {
-    // Find opportunities for this specific status
-    const opportunities = filteredOpportunities.filter(
-      (item) => item["Status"] === statusInfo.statusNumber
-    );
-
-    // Calculate revenue for this status
-    const originalValue = opportunities.reduce((sum, item) => {
-      const revenue = isAllocated
-        ? item["Allocated Gross Revenue"] || 0
-        : item["Gross Revenue"] || 0;
-      return sum + revenue;
-    }, 0);
-
-    const calculatedValue = opportunities.reduce((sum, item) => {
-      return sum + calculateRevenueWithSegmentLogic(item);
-    }, 0);
-
-    return {
-      status: statusInfo.status,
-      originalValue: originalValue,
-      calculatedValue: calculatedValue,
-      count: opportunities.length,
-      statusNumber: statusInfo.statusNumber,
-    };
-  });
-
-  if (isComponentMounted) {
-    setPipelineByStatus(byStatus);
-  }
     
-  // Recalculer les données par service line
-  const byServiceLine = Object.entries(groupDataBy(filteredOpportunities, "Service Line 1"))
-    .map(([serviceLine, opportunities]) => {
-      const originalValue = sumBy(
-        opportunities,
-        isAllocated ? "Allocated Gross Revenue" : "Gross Revenue"
-      );
-      const calculatedValue = opportunities.reduce(
-        (sum, item) => sum + calculateRevenueWithSegmentLogic(item),
-        0
-      );
+    setPipelineByServiceLine(byServiceLine);
+  }, [data, loading, filteredOpportunities.length, activeFilterType, showNetRevenue]); // Add showNetRevenue to dependencies
 
+
+  useEffect(() => {
+    if (!filteredOpportunities || filteredOpportunities.length === 0) return;
+  
+    // Add a cleanup function to prevent stale updates
+    const isComponentMounted = true;
+  
+    // Calculate totals with the current filtered data
+    const currentTotalRevenue = filteredOpportunities.reduce(
+      (sum, item) => sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
+      0
+    );
+    
+    const currentCalculatedTotalRevenue = filteredOpportunities.reduce(
+      (sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue),
+      0
+    );
+  
+    // Calculate allocated revenue based on filtered opportunities
+    let currentAllocatedRevenue = 0;
+    filteredOpportunities.forEach((item) => {
+      const allocatedRevenue = showNetRevenue
+        ? (typeof item["Allocated Net Revenue"] === "number" ? item["Allocated Net Revenue"] : 0)
+        : (typeof item["Allocated Gross Revenue"] === "number" ? item["Allocated Gross Revenue"] : 0);
+      currentAllocatedRevenue += allocatedRevenue;
+    });
+  
+    // Only update if the component is still mounted
+    if (isComponentMounted) {
+      setTotalRevenue(currentTotalRevenue);
+      setCalculatedTotalRevenue(currentCalculatedTotalRevenue);
+      setAllocatedRevenue(currentAllocatedRevenue); // Update allocated revenue with filtered value
+    }
+  
+    // Calculate pipeline by status with the current filtered data
+    const byStatus = ALL_STATUSES.map((statusInfo) => {
+      // Find opportunities for this specific status
+      const opportunities = filteredOpportunities.filter(
+        (item) => item["Status"] === statusInfo.statusNumber
+      );
+  
+      // Calculate revenue for this status
+      const originalValue = opportunities.reduce((sum, item) => {
+        const revenue = isAllocated
+          ? (showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0))
+          : (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0));
+        return sum + revenue;
+      }, 0);
+  
+      const calculatedValue = opportunities.reduce((sum, item) => {
+        return sum + calculateRevenueWithSegmentLogic(item, showNetRevenue);
+      }, 0);
+  
       return {
-        name: serviceLine,
+        status: statusInfo.status,
         originalValue: originalValue,
         calculatedValue: calculatedValue,
         count: opportunities.length,
+        statusNumber: statusInfo.statusNumber,
       };
-    })
-    .sort((a, b) => b.originalValue - a.originalValue);
+    });
   
-  if (isComponentMounted) {
-    setStackedServiceLineData(prepareStackedServiceLineData());
-    setPipelineByServiceLine(byServiceLine);
-  }
+    if (isComponentMounted) {
+      setPipelineByStatus(byStatus);
+    }
+      
+    // Recalculate the data by service line
+    const byServiceLine = Object.entries(groupDataBy(filteredOpportunities, "Service Line 1"))
+      .map(([serviceLine, opportunities]) => {
+        const originalValue = opportunities.reduce((sum, item) => {
+          return sum + (isAllocated 
+            ? (showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0))
+            : (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)));
+        }, 0);
+        
+        const calculatedValue = opportunities.reduce(
+          (sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue),
+          0
+        );
   
-  return () => {
-    // This helps prevent memory leaks and race conditions
-  };  
-}, [filteredOpportunities, isAllocated, data]);
+        return {
+          name: serviceLine,
+          originalValue: originalValue,
+          calculatedValue: calculatedValue,
+          count: opportunities.length,
+        };
+      })
+      .sort((a, b) => b.originalValue - a.originalValue);
+    
+    if (isComponentMounted) {
+      setStackedServiceLineData(prepareStackedServiceLineData());
+      setPipelineByServiceLine(byServiceLine);
+    }
+    
+    return () => {
+      // This helps prevent memory leaks and race conditions
+    };  
+  }, [filteredOpportunities, isAllocated, data, showNetRevenue]); // Added showNetRevenue
 
 
 const handlePipelineInsightFilter = (filteredData, filterType) => {
@@ -894,12 +904,13 @@ const handleChartClick = (chartEvent) => {
         {/* Summary Cards */}
         {/* Summary Cards - First Row */}
         <Grid item xs={12}>
-  <PipelineInsights
-    data={data}
-    isFiltered={filteredOpportunities.length !== data.length}
-    onFilterChange={handlePipelineInsightFilter}
-    activeFilterType={activeFilterType}
-  />
+        <PipelineInsights
+  data={data}
+  isFiltered={filteredOpportunities.length !== data.length}
+  onFilterChange={handlePipelineInsightFilter}
+  activeFilterType={activeFilterType}
+  showNetRevenue={showNetRevenue} // Add this line
+/>
 </Grid>
         <Grid item xs={12} md={4}>
           <Card
@@ -918,13 +929,13 @@ const handleChartClick = (chartEvent) => {
             <CardContent sx={{ p: 3, height: "100%" }}>
               {/* Card Title */}
               <Typography
-                variant="h6"
-                fontWeight={700}
-                color="primary.main"
-                gutterBottom
-              >
-                {isAllocated ? "Filtered Pipeline" : "Pipeline Overview"}
-              </Typography>
+  variant="h6"
+  fontWeight={700}
+  color="primary.main"
+  gutterBottom
+>
+  {isAllocated ? "Filtered Pipeline" : `Pipeline Overview ${showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}`}
+</Typography>
 
               <Divider sx={{ my: 2 }} />
 
@@ -1518,9 +1529,9 @@ const handleChartClick = (chartEvent) => {
               }}
             >
               <div>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Pipeline by Status
-                </Typography>
+              <Typography variant="h6" gutterBottom fontWeight={600}>
+  Pipeline by Status {showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}
+</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Click on chart segments to filter opportunities
                 </Typography>
@@ -1609,9 +1620,9 @@ const handleChartClick = (chartEvent) => {
               }}
             >
               <div>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Pipeline by Service Line
-                </Typography>
+              <Typography variant="h6" gutterBottom fontWeight={600}>
+  Pipeline by Service Line {showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}
+</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Distribution of revenue across service lines
                 </Typography>
@@ -1674,20 +1685,21 @@ const handleChartClick = (chartEvent) => {
         {/* Opportunity List - With increased vertical space and 25 rows by default */}
         <Grid item xs={12}>
           <Box>
-            <OpportunityList
-              data={filteredOpportunities}
-              title="Pipeline Opportunities"
-              selectedOpportunities={selectedOpportunities}
-              onSelectionChange={onSelection}
-              resetFilterCallback={
-                isAllocated || filteredOpportunities.length !== data.length
-                  ? () => setFilteredOpportunities(data)
-                  : null
-              }
-              isFiltered={
-                isAllocated || filteredOpportunities.length !== data.length
-              }
-            />
+          <OpportunityList
+  data={filteredOpportunities}
+  title={`Pipeline Opportunities ${showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}`}
+  selectedOpportunities={selectedOpportunities}
+  onSelectionChange={onSelection}
+  resetFilterCallback={
+    isAllocated || filteredOpportunities.length !== data.length
+      ? () => setFilteredOpportunities(data)
+      : null
+  }
+  isFiltered={
+    isAllocated || filteredOpportunities.length !== data.length
+  }
+  showNetRevenue={showNetRevenue} // Add this line
+/>
           </Box>
         </Grid>
       </Grid>
