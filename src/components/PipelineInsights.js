@@ -18,14 +18,15 @@ import TrendingFlatIcon from "@mui/icons-material/TrendingFlat";
 import TimelineIcon from "@mui/icons-material/Timeline";
 
 // Revenue calculation function copied from PipelineTab
-const calculateRevenueWithSegmentLogic = (item) => {
+
+const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
   // Check if segment code is AUTO, CLR, or IEM
   const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
   const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
 
-  // If special segment code, return full gross revenue
+  // If special segment code, return full revenue based on toggle
   if (isSpecialSegmentCode) {
-    return item['Gross Revenue'] || 0;
+    return useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
   }
 
   // Check each service line (1, 2, and 3)
@@ -35,10 +36,13 @@ const calculateRevenueWithSegmentLogic = (item) => {
     { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
   ];
 
+  // Get the base revenue value based on toggle
+  const baseRevenue = useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+
   // Calculate total allocated revenue for Operations
   const operationsAllocation = serviceLines.reduce((total, service) => {
     if (service.line === 'Operations') {
-      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+      return total + (baseRevenue * (service.percentage / 100));
     }
     return total;
   }, 0);
@@ -48,8 +52,8 @@ const calculateRevenueWithSegmentLogic = (item) => {
     return operationsAllocation;
   }
 
-  // If no specific Operations allocation, return full gross revenue
-  return item['Gross Revenue'] || 0;
+  // If no specific Operations allocation, return full revenue
+  return baseRevenue;
 };
 
 /**
