@@ -905,13 +905,13 @@ const handleChartClick = (chartEvent) => {
         {/* Summary Cards - First Row */}
         <Grid item xs={12}>
         <PipelineInsights
-  data={data}
-  isFiltered={filteredOpportunities.length !== data.length}
-  onFilterChange={handlePipelineInsightFilter}
-  activeFilterType={activeFilterType}
-  showNetRevenue={showNetRevenue} // Add this line
-/>
-</Grid>
+          data={data}
+          isFiltered={filteredOpportunities.length !== data.length}
+          onFilterChange={handlePipelineInsightFilter}
+          activeFilterType={activeFilterType}
+          showNetRevenue={showNetRevenue}
+        />
+        </Grid>
         <Grid item xs={12} md={4}>
           <Card
             sx={{
