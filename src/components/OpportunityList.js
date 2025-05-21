@@ -53,14 +53,17 @@ const statusText = {
 };
 
 // Revenue calculation function to match previous implementation
-const calculateRevenueWithSegmentLogic = (item) => {
+const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
+  // Determine which revenue field to use based on showNetRevenue flag
+  const revenueField = showNetRevenue ? 'Net Revenue' : 'Gross Revenue';
+  
   // Check if segment code is AUTO, CLR, or IEM
   const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
   const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
 
-  // If special segment code, return full gross revenue
+  // If special segment code, return full revenue
   if (isSpecialSegmentCode) {
-    return item['Gross Revenue'] || 0;
+    return item[revenueField] || 0;
   }
 
   // Check each service line (1, 2, and 3)
@@ -73,7 +76,7 @@ const calculateRevenueWithSegmentLogic = (item) => {
   // Calculate total allocated revenue for Operations
   const operationsAllocation = serviceLines.reduce((total, service) => {
     if (service.line === 'Operations') {
-      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+      return total + ((item[revenueField] || 0) * (service.percentage / 100));
     }
     return total;
   }, 0);
@@ -83,12 +86,12 @@ const calculateRevenueWithSegmentLogic = (item) => {
     return operationsAllocation;
   }
 
-  // If no specific Operations allocation, return full gross revenue
-  return item['Gross Revenue'] || 0;
+  // If no specific Operations allocation, return full revenue
+  return item[revenueField] || 0;
 };
 
 
-const exportOpportunities = (data, isFiltered = false) => {
+const exportOpportunities = (data, isFiltered = false, showNetRevenue = false) => {
   // Ensure data is an array
   const opportunitiesData = Array.isArray(data) ? data : [];
 
@@ -101,7 +104,8 @@ const exportOpportunities = (data, isFiltered = false) => {
   // Create a formatted markdown file of all displayed opportunities
   let markdownContent = `# Opportunity List Export\n`;
   markdownContent += `Date: ${new Date().toLocaleDateString('fr-FR')}\n`;
-  markdownContent += `Total Opportunities: ${opportunitiesData.length}\n\n`;
+  markdownContent += `Total Opportunities: ${opportunitiesData.length}\n`;
+  markdownContent += `Revenue Type: ${showNetRevenue ? 'Net Revenue' : 'Gross Revenue'}\n\n`;
   
   if (isFiltered) {
     markdownContent += `> Note: This is a filtered list of opportunities\n\n`;
@@ -132,17 +136,20 @@ const exportOpportunities = (data, isFiltered = false) => {
       
       // Financial Details
       markdownContent += `#### Financial Details\n\n`;
-      markdownContent += `- **Gross Revenue**: ${typeof opp["Gross Revenue"] === "number" 
+      
+      // Use the appropriate revenue field based on showNetRevenue flag
+      const revenueField = showNetRevenue ? 'Net Revenue' : 'Gross Revenue';
+      markdownContent += `- **${showNetRevenue ? 'Net' : 'Gross'} Revenue**: ${typeof opp[revenueField] === "number" 
         ? new Intl.NumberFormat("fr-FR", {
             style: "currency",
             currency: "EUR",
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
-          }).format(opp["Gross Revenue"])
-        : opp["Gross Revenue"] || "N/A"}\n`;
+          }).format(opp[revenueField])
+        : opp[revenueField] || "N/A"}\n`;
       
       // Calculate I&O Revenue
-      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp);
+      const calculatedRevenue = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
       markdownContent += `- **I&O Revenue**: ${new Intl.NumberFormat("fr-FR", {
           style: "currency",
           currency: "EUR",
@@ -154,14 +161,14 @@ const exportOpportunities = (data, isFiltered = false) => {
       if (opp["Is Allocated"]) {
         markdownContent += `- **Allocated to**: ${opp["Allocated Service Line"] || "N/A"}\n`;
         markdownContent += `- **Allocation Percentage**: ${opp["Allocation Percentage"] || "N/A"}%\n`;
-        markdownContent += `- **Allocated Amount**: ${typeof opp["Allocated Gross Revenue"] === "number"
+        markdownContent += `- **Allocated Amount**: ${typeof opp[showNetRevenue ? "Allocated Net Revenue" : "Allocated Gross Revenue"] === "number"
           ? new Intl.NumberFormat("fr-FR", {
               style: "currency",
               currency: "EUR",
               minimumFractionDigits: 0,
               maximumFractionDigits: 0,
-            }).format(opp["Allocated Gross Revenue"])
-          : opp["Allocated Gross Revenue"] || "N/A"}\n`;
+            }).format(opp[showNetRevenue ? "Allocated Net Revenue" : "Allocated Gross Revenue"])
+          : opp[showNetRevenue ? "Allocated Net Revenue" : "Allocated Gross Revenue"] || "N/A"}\n`;
       }
       
       // Contribution margin if available
@@ -192,7 +199,7 @@ const exportOpportunities = (data, isFiltered = false) => {
             currency: "EUR",
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
-          }).format((opp["Gross Revenue"] || 0) * (opp["Service Offering 1 %"] || 0) / 100)}\n\n`;
+          }).format((opp[revenueField] || 0) * (opp["Service Offering 1 %"] || 0) / 100)}\n\n`;
       }
       
       // Secondary Service
@@ -206,7 +213,7 @@ const exportOpportunities = (data, isFiltered = false) => {
             currency: "EUR",
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
-          }).format((opp["Gross Revenue"] || 0) * (opp["Service Offering 2 %"] || 0) / 100)}\n\n`;
+          }).format((opp[revenueField] || 0) * (opp["Service Offering 2 %"] || 0) / 100)}\n\n`;
       }
       
       // Tertiary Service
@@ -220,7 +227,7 @@ const exportOpportunities = (data, isFiltered = false) => {
             currency: "EUR",
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
-          }).format((opp["Gross Revenue"] || 0) * (opp["Service Offering 3 %"] || 0) / 100)}\n\n`;
+          }).format((opp[revenueField] || 0) * (opp["Service Offering 3 %"] || 0) / 100)}\n\n`;
       }
       
       // Additional Information
@@ -252,12 +259,13 @@ const exportOpportunities = (data, isFiltered = false) => {
     markdownContent += `- **${status}**: ${count}\n`;
   });
   
-  // Calculate total revenue
-  const totalRevenue = opportunitiesData.reduce((total, opp) => total + (opp && opp["Gross Revenue"] || 0), 0);
-  const totalIORevenue = opportunitiesData.reduce((total, opp) => total + calculateRevenueWithSegmentLogic(opp), 0);
+  // Calculate total revenue using appropriate revenue field
+  const revenueField = showNetRevenue ? 'Net Revenue' : 'Gross Revenue';
+  const totalRevenue = opportunitiesData.reduce((total, opp) => total + (opp && opp[revenueField] || 0), 0);
+  const totalIORevenue = opportunitiesData.reduce((total, opp) => total + calculateRevenueWithSegmentLogic(opp, showNetRevenue), 0);
   
   markdownContent += `\n#### Financial Summary\n\n`;
-  markdownContent += `- **Total Gross Revenue**: ${new Intl.NumberFormat("fr-FR", {
+  markdownContent += `- **Total ${showNetRevenue ? 'Net' : 'Gross'} Revenue**: ${new Intl.NumberFormat("fr-FR", {
       style: "currency",
       currency: "EUR",
       minimumFractionDigits: 0,
@@ -278,16 +286,16 @@ const exportOpportunities = (data, isFiltered = false) => {
   const element = document.createElement('a');
   const file = new Blob([markdownContent], {type: 'text/markdown'});
   element.href = URL.createObjectURL(file);
-  element.download = `opportunities_export_${new Date().toISOString().split('T')[0]}.md`;
+  element.download = `opportunities_export_${showNetRevenue ? 'net' : 'gross'}_${new Date().toISOString().split('T')[0]}.md`;
   document.body.appendChild(element);
   element.click();
   document.body.removeChild(element);
 };
 // Row component with expandable details
-const OpportunityRow = ({ row, isSelected, onRowClick }) => {
+const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue  }) => {
   const [open, setOpen] = useState(false);
   const theme = useTheme();
-  const calculatedRevenue = calculateRevenueWithSegmentLogic(row);
+  const calculatedRevenue = calculateRevenueWithSegmentLogic(row, showNetRevenue);
 
   return (
     <>
@@ -382,32 +390,31 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
           <Typography variant="body2" fontWeight={500}>
             {row["Is Allocated"] ? (
               <>
-                {typeof row["Allocated Gross Revenue"] === "number"
+                {typeof (showNetRevenue ? row["Allocated Net Revenue"] : row["Allocated Gross Revenue"]) === "number"
                   ? new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(row["Allocated Gross Revenue"])
-                  : row["Allocated Gross Revenue"]}
+                    }).format(showNetRevenue ? row["Allocated Net Revenue"] : row["Allocated Gross Revenue"])
+                  : (showNetRevenue ? row["Allocated Net Revenue"] : row["Allocated Gross Revenue"])}
                 <Typography
                   variant="caption"
                   color="text.secondary"
                   display="block"
                 >
                   {row["Allocated Service Line"]}: {row["Allocation Percentage"]}%
-                  
                 </Typography>
               </>
-            ) : typeof row["Gross Revenue"] === "number" ? (
+            ) : typeof (showNetRevenue ? row["Net Revenue"] : row["Gross Revenue"]) === "number" ? (
               new Intl.NumberFormat("fr-FR", {
                 style: "currency",
                 currency: "EUR",
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0,
-              }).format(row["Gross Revenue"])
+              }).format(showNetRevenue ? row["Net Revenue"] : row["Gross Revenue"])
             ) : (
-              row["Gross Revenue"]
+              showNetRevenue ? row["Net Revenue"] : row["Gross Revenue"]
             )}
           </Typography>
           <Typography variant="caption" color="text.secondary" display="block">
@@ -445,6 +452,8 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
           </Typography>
         </TableCell>
       </TableRow>
+      
+      {/* Collapsed row with details */}
       <TableRow>
         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
           <Collapse 
@@ -504,48 +513,22 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                       {new Date(row["Creation Date"]).toLocaleDateString('fr-FR')}
                     </Typography>
                   </Box>
-                  {/* Add Export Button here */}
                   <Box sx={{ display: "flex", alignItems: "center" }}>
-    <Chip
-      label={
-        statusText[row["Status"]] || `Status ${row["Status"]}`
-      }
-      color={statusColors[row["Status"]] || "default"}
-      size="medium"
-      sx={{ 
-        fontWeight: 600, 
-        px: 1,
-        boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.1)}`,
-        borderRadius: '8px',
-      }}
-    />
-    {/* Icon-only Export Button */}
-    <IconButton
-      size="small"
-      color="primary"
-      aria-label="export opportunity data"
-      onClick={(e) => {
-        e.stopPropagation();
-        // Call the exportOpportunityData function
-        if (typeof window !== 'undefined') {
-          const event = new CustomEvent('exportOpportunityData', {
-            detail: { opportunityId: row["Opportunity ID"] }
-          });
-          window.dispatchEvent(event);
-        }
-      }}
-      sx={{ 
-        ml: 1.5,
-        boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.08)}`,
-        "&:hover": {
-          backgroundColor: alpha(theme.palette.primary.main, 0.1),
-          boxShadow: `0 2px 6px ${alpha(theme.palette.common.black, 0.12)}`,
-        }
-      }}
-    >
-      <DownloadIcon fontSize="small" />
-    </IconButton>
-  </Box>
+                    <Chip
+                      label={
+                        statusText[row["Status"]] || `Status ${row["Status"]}`
+                      }
+                      color={statusColors[row["Status"]] || "default"}
+                      size="medium"
+                      sx={{ 
+                        fontWeight: 600, 
+                        px: 1,
+                        boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.1)}`,
+                        borderRadius: '8px',
+                      }}
+                    />
+                    {/* Export buttons here */}
+                  </Box>
                 </Box>
 
                 {/* Total Opportunity Amount - Improved Allocation Display */}
@@ -572,7 +555,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                       fontWeight={600}
                       color="primary.main"
                     >
-                      Total Opportunity Amount
+                      Total Opportunity {showNetRevenue ? "Net Amount" : "Gross Amount"}
                     </Typography>
                     <Typography
                       variant="h5"
@@ -584,7 +567,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(row["Gross Revenue"] || 0)}
+                      }).format(showNetRevenue ? (row["Net Revenue"] || 0) : (row["Gross Revenue"] || 0))}
                     </Typography>
                   </Box>
 
@@ -646,7 +629,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                             currency: "EUR",
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0,
-                          }).format(row["Allocated Gross Revenue"] || 0)}
+                          }).format(showNetRevenue ? (row["Allocated Net Revenue"] || 0) : (row["Allocated Gross Revenue"] || 0))}
                         </Typography>
                       </Box>
                     </Box>
@@ -814,20 +797,20 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                             />
                           </Box>
                           <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            color="primary.main"
-                          >
-                            {new Intl.NumberFormat("fr-FR", {
-                              style: "currency",
-                              currency: "EUR",
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            }).format(
-                              (row["Gross Revenue"] || 0) *
-                                (row["Service Offering 1 %"] / 100)
-                            )}
-                          </Typography>
+    variant="body2"
+    fontWeight={600}
+    color="primary.main"
+  >
+    {new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(
+      ((showNetRevenue ? row["Net Revenue"] : row["Gross Revenue"]) || 0) *
+        (row["Service Offering 1 %"] / 100)
+    )}
+  </Typography>
                         </Box>
                       </Box>
 
@@ -886,20 +869,20 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                                 />
                               </Box>
                               <Typography
-                                variant="body2"
-                                fontWeight={600}
-                                color="secondary.main"
-                              >
-                                {new Intl.NumberFormat("fr-FR", {
-                                  style: "currency",
-                                  currency: "EUR",
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 0,
-                                }).format(
-                                  (row["Gross Revenue"] || 0) *
-                                    (row["Service Offering 2 %"] / 100)
-                                )}
-                              </Typography>
+  variant="body2"
+  fontWeight={600}
+  color="secondary.main"
+>
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(
+    ((showNetRevenue ? row["Net Revenue"] : row["Gross Revenue"]) || 0) *
+      (row["Service Offering 2 %"] / 100)
+  )}
+</Typography>
                             </Box>
                           </Box>
                         )}
@@ -955,20 +938,20 @@ const OpportunityRow = ({ row, isSelected, onRowClick }) => {
                                 />
                               </Box>
                               <Typography
-                                variant="body2"
-                                fontWeight={600}
-                                color="info.main"
-                              >
-                                {new Intl.NumberFormat("fr-FR", {
-                                  style: "currency",
-                                  currency: "EUR",
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 0,
-                                }).format(
-                                  (row["Gross Revenue"] || 0) *
-                                    (row["Service Offering 3 %"] / 100)
-                                )}
-                              </Typography>
+  variant="body2"
+  fontWeight={600}
+  color="info.main"
+>
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(
+    ((showNetRevenue ? row["Net Revenue"] : row["Gross Revenue"]) || 0) *
+      (row["Service Offering 3 %"] / 100)
+  )}
+</Typography>
                             </Box>
                           </Box>
                         )}
@@ -1115,6 +1098,8 @@ const OpportunityList = ({
   resetFilterCallback = null,
   isFiltered = false,
   disablePagination = false, // New prop to disable pagination
+  showNetRevenue = false, // Added the showNetRevenue prop with default value
+
 }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(defaultRowsPerPage);
@@ -1233,7 +1218,7 @@ const OpportunityList = ({
       >
         <Box sx={{ display: "flex", alignItems: "center" }}>
           <Typography variant="h6" component="div" fontWeight={600}>
-            {title || "Opportunities"}
+            {title || "Opportunities"} {showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}
           </Typography>
           {data.length > 0 && (
             <Typography
@@ -1297,24 +1282,24 @@ const OpportunityList = ({
           </Box>
             {/* Export Opportunities button - only show when there's data */}
             {opportunitiesData.length > 0 && (
-        <IconButton
-          size="small"
-          color="primary"
-          aria-label="export opportunities"
-          onClick={() => exportOpportunities(opportunitiesData, isFiltered)}
-          title="Export Opportunities List"
-          sx={{ 
-            ml: 1,
-            boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.08)}`,
-            "&:hover": {
-              backgroundColor: alpha(theme.palette.primary.main, 0.1),
-              boxShadow: `0 2px 6px ${alpha(theme.palette.common.black, 0.12)}`,
-            }
-          }}
-    >
-      <FormatListBulletedIcon fontSize="small" />
-    </IconButton>
-  )}
+  <IconButton
+    size="small"
+    color="primary"
+    aria-label="export opportunities"
+    onClick={() => exportOpportunities(opportunitiesData, isFiltered, showNetRevenue)} // Pass showNetRevenue
+    title={`Export ${showNetRevenue ? 'Net' : 'Gross'} Opportunities List`}
+    sx={{ 
+      ml: 1,
+      boxShadow: `0 2px 4px ${alpha(theme.palette.common.black, 0.08)}`,
+      "&:hover": {
+        backgroundColor: alpha(theme.palette.primary.main, 0.1),
+        boxShadow: `0 2px 6px ${alpha(theme.palette.common.black, 0.12)}`,
+      }
+    }}
+  >
+    <FormatListBulletedIcon fontSize="small" />
+  </IconButton>
+)}
           {/* Meeting Minutes button - only show when there's data */}
           {data.length > 0 && (
       <IconButton
@@ -1355,9 +1340,8 @@ const OpportunityList = ({
         sx={{
           width: "100%",
           overflow: "visible",
-          // Force table layout to respect column widths exactly
           "& .MuiTable-root": {
-            tableLayout: "fixed", // This is key for fixed column widths
+            tableLayout: "fixed",
             width: "100%",
           },
         }}
@@ -1369,14 +1353,8 @@ const OpportunityList = ({
         >
           <TableHead>
             <TableRow>
-              <TableCell
-                padding="checkbox"
-                sx={{ width: 48, minWidth: 48, maxWidth: 48 }} // Fixed width
-              />
-              <TableCell
-                padding="none"
-                sx={{ width: 120, minWidth: 120, maxWidth: 120 }} // Increased from 80 to 120px
-              >
+              <TableCell padding="checkbox" sx={{ width: 48 }} />
+              <TableCell padding="none" sx={{ width: 120 }}>
                 <TableSortLabel
                   active={orderBy === "Opportunity ID"}
                   direction={orderBy === "Opportunity ID" ? order : "asc"}
@@ -1385,9 +1363,7 @@ const OpportunityList = ({
                   ID
                 </TableSortLabel>
               </TableCell>
-              <TableCell
-                sx={{ width: "25%", minWidth: 180 }} // Percentage width for flexibility with fixed minimum
-              >
+              <TableCell sx={{ width: "25%" }}>
                 <TableSortLabel
                   active={orderBy === "Opportunity"}
                   direction={orderBy === "Opportunity" ? order : "asc"}
@@ -1396,9 +1372,7 @@ const OpportunityList = ({
                   Opportunity
                 </TableSortLabel>
               </TableCell>
-              <TableCell
-                sx={{ width: 120, minWidth: 120, maxWidth: 120 }} // Fixed width
-              >
+              <TableCell sx={{ width: 120 }}>
                 <TableSortLabel
                   active={orderBy === "Status"}
                   direction={orderBy === "Status" ? order : "asc"}
@@ -1407,21 +1381,16 @@ const OpportunityList = ({
                   Status
                 </TableSortLabel>
               </TableCell>
-              <TableCell
-                align="right"
-                sx={{ width: 150, minWidth: 150, maxWidth: 150 }} // Fixed width
-              >
+              <TableCell align="right" sx={{ width: 150 }}>
                 <TableSortLabel
-                  active={orderBy === "Gross Revenue"}
-                  direction={orderBy === "Gross Revenue" ? order : "asc"}
-                  onClick={() => handleSortRequest("Gross Revenue")}
+                  active={orderBy === (showNetRevenue ? "Net Revenue" : "Gross Revenue")}
+                  direction={orderBy === (showNetRevenue ? "Net Revenue" : "Gross Revenue") ? order : "asc"}
+                  onClick={() => handleSortRequest(showNetRevenue ? "Net Revenue" : "Gross Revenue")}
                 >
-                  Revenue
+                  {showNetRevenue ? "Net Revenue" : "Gross Revenue"}
                 </TableSortLabel>
               </TableCell>
-              <TableCell
-                sx={{ width: "25%", minWidth: 150 }} // Percentage width for flexibility with fixed minimum
-              >
+              <TableCell sx={{ width: "25%" }}>
                 <TableSortLabel
                   active={orderBy === "Account"}
                   direction={orderBy === "Account" ? order : "asc"}
@@ -1430,9 +1399,7 @@ const OpportunityList = ({
                   Account
                 </TableSortLabel>
               </TableCell>
-              <TableCell
-                sx={{ width: "25%", minWidth: 150 }} // Percentage width for flexibility with fixed minimum
-              >
+              <TableCell sx={{ width: "25%" }}>
                 <TableSortLabel
                   active={orderBy === "Service Line 1"}
                   direction={orderBy === "Service Line 1" ? order : "asc"}
@@ -1453,13 +1420,13 @@ const OpportunityList = ({
                 </TableCell>
               </TableRow>
             ) : (
-              // Use the getDisplayData method instead of direct slicing
               getDisplayData().map((row) => (
                 <OpportunityRow
                   key={row["Opportunity ID"]}
                   row={row}
                   isSelected={isSelected(row)}
                   onRowClick={handleRowClick}
+                  showNetRevenue={showNetRevenue} // Pass the prop here
                 />
               ))
             )}
