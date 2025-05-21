@@ -77,7 +77,7 @@ const formatDateFR = (date) => {
   });
 };
 
-const TopAccountsSection = ({ data, dateRange }) => {
+const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({
     key: "calculatedAmount", // Default sort by I&O amount
@@ -97,52 +97,41 @@ const TopAccountsSection = ({ data, dateRange }) => {
   const IO_TARGET = 1000000; // 1 million euros
 
   // Revenue calculation function to match previous implementation
-  const calculateRevenueWithSegmentLogic = (item) => {
+  const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
     // Check if segment code is AUTO, CLR, or IEM
-    const specialSegmentCodes = ["AUTO", "CLR", "IEM"];
-    const isSpecialSegmentCode = specialSegmentCodes.includes(
-      item["Sub Segment Code"]
-    );
-
-    // If special segment code, return full gross revenue
+    const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
+    const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
+  
+    // If special segment code, return full revenue based on toggle
     if (isSpecialSegmentCode) {
-      return item["Gross Revenue"] || 0;
+      return showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
     }
-
+  
     // Check each service line (1, 2, and 3)
     const serviceLines = [
-      {
-        line: item["Service Line 1"],
-        percentage: item["Service Offering 1 %"] || 0,
-      },
-      {
-        line: item["Service Line 2"],
-        percentage: item["Service Offering 2 %"] || 0,
-      },
-      {
-        line: item["Service Line 3"],
-        percentage: item["Service Offering 3 %"] || 0,
-      },
+      { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
+      { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
+      { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
     ];
-
-    // Calculate total allocated revenue for Operations
-    const operationsAllocation = serviceLines.reduce((total, service) => {
-      if (service.line === "Operations") {
-        return (
-          total + (item["Gross Revenue"] || 0) * (service.percentage / 100)
-        );
-      }
-      return total;
-    }, 0);
-
-    // If any Operations allocation is found, return that
-    if (operationsAllocation > 0) {
-      return operationsAllocation;
+  
+    // Get the base revenue value based on toggle
+    const baseRevenue = showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+  // Calculate total allocated revenue for Operations
+  const operationsAllocation = serviceLines.reduce((total, service) => {
+    if (service.line === 'Operations') {
+      return total + (baseRevenue * (service.percentage / 100));
     }
+    return total;
+  }, 0);
 
-    // If no specific Operations allocation, return full gross revenue
-    return item["Gross Revenue"] || 0;
-  };
+  // If any Operations allocation is found, return that
+  if (operationsAllocation > 0) {
+    return operationsAllocation;
+  }
+
+  // If no specific Operations allocation, return full revenue
+  return baseRevenue;
+};
 
   useEffect(() => {
     if (!data || data.length === 0) return;
@@ -201,7 +190,7 @@ const TopAccountsSection = ({ data, dateRange }) => {
 
       // Add to total amount
       const bookingAmount = opportunity["Gross Revenue"] || 0;
-      const calculatedAmount = calculateRevenueWithSegmentLogic(opportunity);
+      const calculatedAmount = calculateRevenueWithSegmentLogic(opportunity, showNetRevenue);
 
       accountMap[account].bookingAmount += bookingAmount;
       accountMap[account].calculatedAmount += calculatedAmount;
@@ -897,7 +886,7 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
   );
 };
 
-const BookingsTab = ({ data, loading, onSelection, selectedOpportunities }) => {
+const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNetRevenue = false }) => {
   const [yoyBookings, setYoyBookings] = useState([]);
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
   const [totalBookings, setTotalBookings] = useState(0);
@@ -1744,7 +1733,7 @@ useEffect(() => {
         </Grid>
 
         {/* NEW: Top 10 Accounts Section with date range filter */}
-        <TopAccountsSection data={data} dateRange={dateRange} />
+        <TopAccountsSection data={data} dateRange={dateRange} showNetRevenue={showNetRevenue} />
 
         {/* Period Analysis Results - Improved Design */}
         <Grid item xs={12}>
@@ -1928,12 +1917,13 @@ useEffect(() => {
 
         {/* Opportunity List */}
         <Grid item xs={12} sx={{ mt: 3 }}>
-          <OpportunityList
-            data={filteredOpportunities}
-            title="Bookings"
-            selectedOpportunities={selectedOpportunities}
-            onSelectionChange={onSelection}
-          />
+        <OpportunityList
+          data={filteredOpportunities}
+          title={`Bookings ${showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}`}
+          selectedOpportunities={selectedOpportunities}
+          onSelectionChange={onSelection}
+          showNetRevenue={showNetRevenue}
+        />
         </Grid>
       </Box>
     </Fade>
