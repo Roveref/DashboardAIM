@@ -65,6 +65,8 @@ import {
   getNewOpportunities,
   getNewWins,
   getNewLosses,
+  calculateRevenueWithSegmentLogic,
+
 } from "../utils/dataUtils";
 
 // Format date in French format
@@ -76,6 +78,8 @@ const formatDateFR = (date) => {
     year: "numeric",
   });
 };
+
+
 
 const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
   const theme = useTheme();
@@ -97,42 +101,6 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
   const IO_TARGET = 1000000; // 1 million euros
 
   // Revenue calculation function to match previous implementation
-  const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
-    // Check if segment code is AUTO, CLR, or IEM
-    const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
-    const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
-  
-    // If special segment code, return full revenue based on toggle
-    if (isSpecialSegmentCode) {
-      return showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
-    }
-  
-    // Check each service line (1, 2, and 3)
-    const serviceLines = [
-      { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
-      { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
-      { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
-    ];
-  
-    // Get the base revenue value based on toggle
-    const baseRevenue = showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
-  // Calculate total allocated revenue for Operations
-  const operationsAllocation = serviceLines.reduce((total, service) => {
-    if (service.line === 'Operations') {
-      return total + (baseRevenue * (service.percentage / 100));
-    }
-    return total;
-  }, 0);
-
-  // If any Operations allocation is found, return that
-  if (operationsAllocation > 0) {
-    return operationsAllocation;
-  }
-
-  // If no specific Operations allocation, return full revenue
-  return baseRevenue;
-};
-
   useEffect(() => {
     if (!data || data.length === 0) return;
 
@@ -149,23 +117,23 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
 
     // Calculate total bookings and I&O amounts for ALL filtered accounts
     const totalAllBookings = bookedOpportunities.reduce(
-      (sum, opp) => sum + (opp["Gross Revenue"] || 0),
+      (sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)),
       0
     );
     
     const totalAllIO = bookedOpportunities.reduce(
-      (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp),
+      (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
       0
     );
     
     // Calculate special segment totals (CLR, IEM, AUTO)
     const specialSegmentBookings = bookedOpportunities
-      .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
-      .reduce((sum, opp) => sum + (opp["Gross Revenue"] || 0), 0);
-    
-    const specialSegmentIO = bookedOpportunities
-      .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
-      .reduce((sum, opp) => sum + calculateRevenueWithSegmentLogic(opp), 0);
+  .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
+  .reduce((sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)), 0);
+
+const specialSegmentIO = bookedOpportunities
+  .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
+  .reduce((sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue), 0);
     
     // Group by account
     const accountMap = {};
@@ -189,7 +157,7 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
       }
 
       // Add to total amount
-      const bookingAmount = opportunity["Gross Revenue"] || 0;
+      const bookingAmount = showNetRevenue ? (opportunity["Net Revenue"] || 0) : (opportunity["Gross Revenue"] || 0);
       const calculatedAmount = calculateRevenueWithSegmentLogic(opportunity, showNetRevenue);
 
       accountMap[account].bookingAmount += bookingAmount;
@@ -941,13 +909,9 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
   const updateDateAnalysis = () => {
     if (!data) return;
     
-    const startDate = dateRange[0] || new Date(currentYear, 0, 1);  // Default to Jan 1st
-    const endDate = dateRange[1] || new Date();  // Default to today
+    const startDate = dateRange[0] || new Date(currentYear, 0, 1);
+    const endDate = dateRange[1] || new Date();
     
-    console.log("Updating Date Analysis:");
-    console.log("Start Date:", startDate);
-    console.log("End Date:", endDate);
-  
     // Get new bookings and losses within the date range
     const wins = data.filter((item) => {
       if (item["Status"] !== 14) return false;
@@ -962,9 +926,6 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
       const statusDate = new Date(item["Last Status Change Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
-  
-    console.log("Wins:", wins.length);
-    console.log("Losses:", losses.length);
   
     setNewWins(wins);
     setNewLosses(losses);
@@ -981,7 +942,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
   const calculateCumulativeTotals = (bookingsData) => {
     return bookingsData.map((monthData, index) => {
       const cumulativeMonth = { ...monthData };
-
+  
       // Calculate cumulative totals for each year
       years.forEach((year) => {
         // Sum all previous months' values for this year
@@ -990,11 +951,17 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
           .reduce((sum, prevMonth) => {
             return sum + (prevMonth[year] || 0);
           }, 0);
-
+  
         // Add cumulative value for this year
         cumulativeMonth[`${year}_cumulative`] = cumulativeValue;
+        
+        // NEW: Create cumulative opportunities list for this year
+        // Collect all opportunities from all previous months up to and including current month
+        cumulativeMonth[`${year}Opps_cumulative`] = bookingsData
+          .slice(0, index + 1)
+          .flatMap(prevMonth => prevMonth[`${year}Opps`] || []);
       });
-
+  
       return cumulativeMonth;
     });
   };
@@ -1041,6 +1008,72 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      // Group entries by year
+      const entriesByYear = {};
+      
+      // First pass: organize data by year
+      payload.forEach(entry => {
+        // Defensive check for dataKey
+        const dataKey = String(entry.dataKey || "");
+        
+        // Parse year and type (regular or cumulative)
+        const isCumulative = dataKey.includes("_cumulative");
+        const year = dataKey.replace("_cumulative", "");
+        
+        // Skip entries that don't look like valid year data
+        if (!/^\d+(_cumulative)?$/.test(dataKey)) return;
+        
+        // Initialize year entry if not exists
+        if (!entriesByYear[year]) {
+          entriesByYear[year] = {
+            year,
+            regular: null,
+            cumulative: null,
+            color: entry.color,
+            // These will be set later
+            oppCount: 0,
+            oppCountCumulative: 0,
+            ioValue: 0,
+            ioValueCumulative: 0
+          };
+        }
+        
+        // Set value based on type
+        if (isCumulative) {
+          entriesByYear[year].cumulative = entry.value || 0;
+          entriesByYear[year].cumulativeColor = entry.color;
+        } else {
+          entriesByYear[year].regular = entry.value || 0;
+          entriesByYear[year].color = entry.color;
+        }
+      });
+      
+      // Second pass: add opportunities count and I&O values
+      Object.keys(entriesByYear).forEach(year => {
+        // Get monthly opportunity list
+        const oppList = payload[0].payload[`${year}Opps`] || [];
+        entriesByYear[year].oppCount = oppList.length || 0;
+        
+        // Calculate I&O value for monthly data directly from opportunities
+        entriesByYear[year].ioValue = oppList.reduce(
+          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+          0
+        );
+        
+        // NEW: Get cumulative opportunity list
+        const cumulativeOppList = payload[0].payload[`${year}Opps_cumulative`] || [];
+        entriesByYear[year].oppCountCumulative = cumulativeOppList.length || 0;
+        
+        // NEW: Calculate cumulative I&O directly from cumulative opportunity list
+        entriesByYear[year].ioValueCumulative = cumulativeOppList.reduce(
+          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+          0
+        );
+      });
+      
+      // Get sorted years (ensuring 2024 before 2025)
+      const sortedYears = Object.keys(entriesByYear).sort();
+    
       return (
         <Card
           sx={{
@@ -1050,52 +1083,94 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
             borderColor: alpha(theme.palette.primary.main, 0.1),
             boxShadow: theme.shadows[3],
             borderRadius: 2,
+            maxWidth: 300
           }}
         >
-          <Typography variant="subtitle2" fontWeight={600}>
+          <Typography variant="subtitle2" fontWeight={600} mb={1}>
             {label}
           </Typography>
-          {payload.map((entry, index) => {
-            // Defensive check for dataKey
-            const dataKey = String(entry.dataKey || "");
-
-            // Check for cumulative using regex
-            const isCumulative = dataKey.includes("_cumulative");
-            const year = dataKey.replace("_cumulative", "");
-
-            // Skip entries that don't look like valid year data
-            if (!/^\d+(_cumulative)?$/.test(dataKey)) return null;
-
+          
+          {sortedYears.map(year => {
+            const yearData = entriesByYear[year];
             return (
-              <Box key={`item-${index}`} sx={{ mt: 1 }}>
+              <Box key={year} sx={{ mb: 1.5 }}>
+                {/* Year Header */}
+                <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                  Year {year}
+                </Typography>
+                
+                {/* Monthly Value */}
                 <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
                   <Box
                     sx={{
-                      width: 12,
-                      height: 12,
-                      backgroundColor: entry.color,
+                      width: 10,
+                      height: 10,
+                      backgroundColor: yearData.color,
                       borderRadius: "50%",
                       mr: 1,
                     }}
                   />
-                  <Typography variant="body2" sx={{ mr: 1 }}>
-                    {isCumulative ? "Cumulative " : ""}
-                    {year}:
+                  <Typography variant="body2" sx={{ mr: 1, fontSize: "0.825rem" }}>
+                    Monthly:
                   </Typography>
-                  <Typography variant="body2" fontWeight={600}>
+                  <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.825rem" }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(entry.value || 0)}
+                    }).format(yearData.regular || 0)}
+                    {yearData.oppCount > 0 && (
+                      <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 0.5 }}>
+                        (I&O: {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(yearData.ioValue)})
+                      </Typography>
+                    )}
                   </Typography>
                 </Box>
-                {!isCumulative && (
-                  <Typography variant="caption" color="text.secondary">
-                    {payload[0].payload[`${year}Count`] || 0} opportunities
+                
+                {/* Cumulative Value */}
+                <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
+                  <Box
+                    sx={{
+                      width: 10,
+                      height: 10,
+                      backgroundColor: yearData.cumulativeColor || yearData.color,
+                      borderRadius: "50%",
+                      mr: 1,
+                    }}
+                  />
+                  <Typography variant="body2" sx={{ mr: 1, fontSize: "0.825rem" }}>
+                    Cumulative:
                   </Typography>
-                )}
+                  <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.825rem" }}>
+                    {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(yearData.cumulative || 0)}
+                    {yearData.oppCountCumulative > 0 && (
+                      <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 0.5 }}>
+                        (I&O: {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(yearData.ioValueCumulative)})
+                      </Typography>
+                    )}
+                  </Typography>
+                </Box>
+                
+                {/* Opportunities Count */}
+                <Typography variant="caption" color="text.secondary" sx={{ pl: 3 }}>
+                  {yearData.oppCountCumulative} total opportunities
+                </Typography>
               </Box>
             );
           })}
@@ -1105,32 +1180,37 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
     return null;
   };
 
+  
   // Add this useEffect to trigger the initial data processing and chart population
-useEffect(() => {
-  // This will ensure the chart data is processed on initial load
-  if (data && data.length > 0 && !loading) {
-    // Process data for chart when component mounts
-    const bookedData = data.filter((item) => item["Status"] === 14);
-    const monthly = getMonthlyYearlyTotals(
-      bookedData,
-      "Last Status Change Date",
-      "Gross Revenue"
-    );
-    const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
-    setYears(uniqueYears);
-
-    // Format data for YoY comparison
-    const yoyData = formatYearOverYearData(monthly);
-    setYoyBookings(yoyData);
-
-    // Calculate cumulative data
-    const cumData = calculateCumulativeTotals(yoyData);
-    setCumulativeData(cumData);
-    
-    // Also trigger the date analysis to ensure filtered opportunities are set
-    updateDateAnalysis();
-  }
-}, []);  // Empty dependency array means this runs once on mount
+  useEffect(() => {
+    if (data && data.length > 0 && !loading) {
+      // Process data for chart when component mounts
+      const bookedData = data.filter((item) => item["Status"] === 14);
+      
+      // Log what revenue type we're using
+      console.log("Chart using revenue type:", showNetRevenue ? "Net Revenue" : "Gross Revenue");
+      
+      const monthly = getMonthlyYearlyTotals(
+        bookedData,
+        "Last Status Change Date",
+        showNetRevenue ? "Net Revenue" : "Gross Revenue"
+      );
+      
+      const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
+      setYears(uniqueYears);
+  
+      // Format data for YoY comparison
+      const yoyData = formatYearOverYearData(monthly);
+      setYoyBookings(yoyData);
+  
+      // Calculate cumulative data
+      const cumData = calculateCumulativeTotals(yoyData);
+      setCumulativeData(cumData);
+      
+      // Also trigger the date analysis to ensure filtered opportunities are set
+      updateDateAnalysis();
+    }
+  }, [data, loading, showNetRevenue]); // Include showNetRevenue in dependencies
 
   useEffect(() => {
     // Trigger date analysis when date range is updated
@@ -1141,34 +1221,32 @@ useEffect(() => {
 
   useEffect(() => {
     if (!data || loading) return;
-
+  
     // Reset filtered opportunities
     setFilteredOpportunities(data);
-
-    // Calculate total bookings revenue
+  
+    // Calculate total bookings revenue - use correct field based on showNetRevenue
     const total = sumBy(
       data,
-      data[0] && data[0]["Is Allocated"]
-        ? "Allocated Gross Revenue"
-        : "Gross Revenue"
+      showNetRevenue ? "Net Revenue" : "Gross Revenue"
     );
     setTotalBookings(total);
-
+  
     // Calculate monthly yearly bookings for the bar chart
-    // Use Last Status Change Date instead of Creation Date
     const bookedData = data.filter((item) => item["Status"] === 14);
     const monthly = getMonthlyYearlyTotals(
-      bookedData, // Use only booked opportunities
-      "Last Status Change Date", // Use Last Status Change Date instead of Creation Date
-      "Gross Revenue"
+      bookedData,
+      "Last Status Change Date",
+      showNetRevenue ? "Net Revenue" : "Gross Revenue"
     );
+    
     const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
     setYears(uniqueYears);
-
+  
     // Format data for YoY comparison
     const yoyData = formatYearOverYearData(monthly);
     setYoyBookings(yoyData);
-
+  
     // Calculate cumulative data
     const cumData = calculateCumulativeTotals(yoyData);
     setCumulativeData(cumData);
@@ -1205,55 +1283,7 @@ useEffect(() => {
 
     // Calculate new opportunities, wins, and losses
     updateDateAnalysis();
-  }, [data, loading]);
-
-  // Revenue calculation function to match previous implementation
-  const calculateRevenueWithSegmentLogic = (item) => {
-    // Check if segment code is AUTO, CLR, or IEM
-    const specialSegmentCodes = ["AUTO", "CLR", "IEM"];
-    const isSpecialSegmentCode = specialSegmentCodes.includes(
-      item["Sub Segment Code"]
-    );
-
-    // If special segment code, return full gross revenue
-    if (isSpecialSegmentCode) {
-      return item["Gross Revenue"] || 0;
-    }
-
-    // Check each service line (1, 2, and 3)
-    const serviceLines = [
-      {
-        line: item["Service Line 1"],
-        percentage: item["Service Offering 1 %"] || 0,
-      },
-      {
-        line: item["Service Line 2"],
-        percentage: item["Service Offering 2 %"] || 0,
-      },
-      {
-        line: item["Service Line 3"],
-        percentage: item["Service Offering 3 %"] || 0,
-      },
-    ];
-
-    // Calculate total allocated revenue for Operations
-    const operationsAllocation = serviceLines.reduce((total, service) => {
-      if (service.line === "Operations") {
-        return (
-          total + (item["Gross Revenue"] || 0) * (service.percentage / 100)
-        );
-      }
-      return total;
-    }, 0);
-
-    // If any Operations allocation is found, return that
-    if (operationsAllocation > 0) {
-      return operationsAllocation;
-    }
-
-    // If no specific Operations allocation, return full gross revenue
-    return item["Gross Revenue"] || 0;
-  };
+}, [data, loading, showNetRevenue]); 
 
   // Bookings 2025 calculation with new revenue logic
   const bookings2025 = data.filter(
@@ -1272,18 +1302,16 @@ useEffect(() => {
 
   // Calculate revenues with new logic
   const bookings2025Revenue = bookings2025.reduce(
-    (sum, item) => sum + calculateRevenueWithSegmentLogic(item),
+    (sum, item) => sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
     0
   );
-
   const losses2025Revenue = losses2025.reduce(
-    (sum, item) => sum + (item["Gross Revenue"] || 0),
+    (sum, item) => sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
     0
   );
-
   // Calculate average booking size
   const averageBookingSize2025 =
-    bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
+  bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
 
   return (
     <Fade in={!loading} timeout={500}>
@@ -1332,21 +1360,29 @@ useEffect(() => {
                   mb: 2,
                 }}
               >
-                <Box>
-                  <Typography
-                    variant="h5"
-                    color="primary.main"
-                    fontWeight={700}
-                    sx={{ mb: 0.5 }}
-                  >
-                    {new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(bookings2025Revenue)}
-                  </Typography>
-                </Box>
+<Box>
+  <Typography
+    variant="h5"
+    color="primary.main"
+    fontWeight={700}
+    sx={{ mb: 0.5 }}
+  >
+    {new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(bookings2025Revenue)}
+    <Typography component="span" variant="caption" color="primary.dark" sx={{ ml: 1 }}>
+      (I&O: {new Intl.NumberFormat("fr-FR", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(bookings2025.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0))})
+    </Typography>
+  </Typography>
+</Box>
               </Box>
 
               <Box
@@ -1529,19 +1565,31 @@ useEffect(() => {
                 }}
               >
                 <Box>
-                  <Typography
-                    variant="h5"
-                    color="secondary.main"
-                    fontWeight={700}
-                    sx={{ mb: 0.5 }}
-                  >
-                    {new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(averageBookingSize2025)}
-                  </Typography>
+                <Typography
+  variant="h5"
+  color="secondary.main"
+  fontWeight={700}
+  sx={{ mb: 0.5 }}
+>
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(averageBookingSize2025)}
+  <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
+    (I&O: {new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(
+      bookings2025.length > 0 
+        ? bookings2025.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0) / bookings2025.length 
+        : 0
+    )})
+  </Typography>
+</Typography>
                 </Box>
               </Box>
 
@@ -1552,40 +1600,42 @@ useEffect(() => {
                   alignItems: "center",
                 }}
               >
-                <Typography variant="body2" color="text.secondary">
-                  Range:{" "}
-                  {bookings2025.length > 0 ? (
-                    <>
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(
-                        Math.min(
-                          ...bookings2025.map(
-                            (opp) => opp["Gross Revenue"] || 0
-                          )
-                        )
-                      )}{" "}
-                      -
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(
-                        Math.max(
-                          ...bookings2025.map(
-                            (opp) => opp["Gross Revenue"] || 0
-                          )
-                        )
-                      )}
-                    </>
-                  ) : (
-                    "N/A"
-                  )}
-                </Typography>
+           <Typography variant="body2" color="text.secondary">
+  Range:{" "}
+  {bookings2025.length > 0 ? (
+    <>
+      {new Intl.NumberFormat("fr-FR", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(
+        Math.min(
+          ...bookings2025.filter(opp => 
+            showNetRevenue ? (opp["Net Revenue"] > 0) : (opp["Gross Revenue"] > 0)
+          ).map(
+            (opp) => showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)
+          )
+        )
+      )}
+      {" "}-{" "}
+      {new Intl.NumberFormat("fr-FR", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(
+        Math.max(
+          ...bookings2025.map(
+            (opp) => showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)
+          )
+        )
+      )}
+    </>
+  ) : (
+    "N/A"
+  )}
+</Typography>
 
                 <Box
                   sx={{
@@ -1688,33 +1738,33 @@ useEffect(() => {
                 <Legend />
 
                 {/* Bars and Lines for each year */}
-                {years.map((year, index) => {
-                  const colorSet = COLORS[index % COLORS.length];
-                  return (
-                    <React.Fragment key={year}>
-                      {/* Monthly Bars */}
-                      <Bar
-                        yAxisId="monthly"
-                        dataKey={year}
-                        name={`${year} Monthly`}
-                        fill={colorSet.bar}
-                        fillOpacity={colorSet.opacity}
-                        stackId={`${year}-stack`}
-                      />
+               {years.map((year, index) => {
+  const colorSet = COLORS[index % COLORS.length];
+  return (
+    <React.Fragment key={year}>
+      {/* Monthly Bars */}
+      <Bar
+        yAxisId="monthly"
+        dataKey={year}
+        name={`${year} Monthly (${showNetRevenue ? "Net Revenue" : "Gross Revenue"})`}
+        fill={colorSet.bar}
+        fillOpacity={colorSet.opacity}
+        stackId={`${year}-stack`}
+      />
 
-                      {/* Cumulative Line */}
-                      <Line
-                        yAxisId="cumulative"
-                        type="monotone"
-                        dataKey={`${year}_cumulative`}
-                        name={`${year} Cumulative`}
-                        stroke={colorSet.line}
-                        strokeWidth={3}
-                        dot={false}
-                      />
-                    </React.Fragment>
-                  );
-                })}
+      {/* Cumulative Line */}
+      <Line
+        yAxisId="cumulative"
+        type="monotone"
+        dataKey={`${year}_cumulative`}
+        name={`${year} Cumulative (${showNetRevenue ? "Net Revenue" : "Gross Revenue"})`}
+        stroke={colorSet.line}
+        strokeWidth={3}
+        dot={false}
+      />
+    </React.Fragment>
+  );
+})}
               </ComposedChart>
             </ResponsiveContainer>
           </Paper>
@@ -1829,29 +1879,29 @@ useEffect(() => {
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
-                      <Typography variant="h5" fontWeight={700} color="success.main">
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(sumBy(newWins, "Gross Revenue"))}
-                      </Typography>
+                    <Typography variant="h5" fontWeight={700} color="success.main">
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(sumBy(newWins, showNetRevenue ? "Net Revenue" : "Gross Revenue"))}
+</Typography>
                       
                       {/* I&O amount directly below the main figure */}
                       <Typography variant="body1" fontWeight={600} color="primary.main" sx={{ mt: 0.5 }}>
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0))}
-                        {newWins.length > 0 && (
-                          <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
-                            ({(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0) / sumBy(newWins, "Gross Revenue") * 100).toFixed(1)}%)
-                          </Typography>
-                        )}
-                      </Typography>
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0))}
+  {newWins.length > 0 && (
+    <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
+      ({(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0) / sumBy(newWins, showNetRevenue ? "Net Revenue" : "Gross Revenue") * 100).toFixed(1)}%)
+    </Typography>
+  )}
+</Typography>
                     </Grid>
                   </Grid>
                 </Box>
@@ -1879,34 +1929,34 @@ useEffect(() => {
                             currency: "EUR",
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0
-                          }).format(newLosses.length > 0 ? sumBy(newLosses, "Gross Revenue") / newLosses.length : 0)}
-                        </strong>
+                          }).format(newLosses.length > 0 ? sumBy(newLosses, showNetRevenue ? "Net Revenue" : "Gross Revenue") / newLosses.length : 0)}
+                          </strong>
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
-                      <Typography variant="h5" fontWeight={700} color="error.main">
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(sumBy(newLosses, "Gross Revenue"))}
-                      </Typography>
+                    <Typography variant="h5" fontWeight={700} color="error.main">
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(sumBy(newLosses, showNetRevenue ? "Net Revenue" : "Gross Revenue"))}
+</Typography>
                       
                       {/* I&O amount directly below the main figure */}
                       <Typography variant="body1" fontWeight={600} color="primary.main" sx={{ mt: 0.5 }}>
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0))}
-                        {newLosses.length > 0 && (
-                          <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
-                            ({(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item), 0) / sumBy(newLosses, "Gross Revenue") * 100).toFixed(1)}%)
-                          </Typography>
-                        )}
-                      </Typography>
+  {new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0))}
+  {newLosses.length > 0 && (
+    <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
+      ({(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0) / sumBy(newLosses, showNetRevenue ? "Net Revenue" : "Gross Revenue") * 100).toFixed(1)}%)
+    </Typography>
+  )}
+</Typography>
                     </Grid>
                   </Grid>
                 </Box>
@@ -1919,7 +1969,7 @@ useEffect(() => {
         <Grid item xs={12} sx={{ mt: 3 }}>
         <OpportunityList
           data={filteredOpportunities}
-          title={`Bookings ${showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}`}
+          title={`Bookings`}
           selectedOpportunities={selectedOpportunities}
           onSelectionChange={onSelection}
           showNetRevenue={showNetRevenue}
