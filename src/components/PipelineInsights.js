@@ -19,14 +19,14 @@ import TimelineIcon from "@mui/icons-material/Timeline";
 
 // Revenue calculation function copied from PipelineTab
 
-const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
+const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
   // Check if segment code is AUTO, CLR, or IEM
   const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
   const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
 
   // If special segment code, return full revenue based on toggle
   if (isSpecialSegmentCode) {
-    return useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+    return showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
   }
 
   // Check each service line (1, 2, and 3)
@@ -37,7 +37,7 @@ const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
   ];
 
   // Get the base revenue value based on toggle
-  const baseRevenue = useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+  const baseRevenue = showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
 
   // Calculate total allocated revenue for Operations
   const operationsAllocation = serviceLines.reduce((total, service) => {
@@ -60,7 +60,7 @@ const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
  * Component that analyzes pipeline data and generates insights
  * Customized to show specific status changes
  */
-const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType }) => {
+const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType, showNetRevenue = false }) => {
   const theme = useTheme();
   const [insights, setInsights] = useState({
     newOpportunities: { 
@@ -197,29 +197,29 @@ const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType }
 
       // Sum up the revenues (original and calculated)
       const newOpportunitiesRevenue = newOpportunitiesThisMonth.reduce(
-        (sum, opp) => sum + (opp["Gross Revenue"] || 0),
+        (sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)),
         0
       );
       const newOpportunitiesCalculatedRevenue = newOpportunitiesThisMonth.reduce(
-        (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp),
+        (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
         0
       );
       
       const recentStatus6Revenue = recentStatus6.reduce(
-        (sum, opp) => sum + (opp["Gross Revenue"] || 0),
+        (sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)),
         0
       );
       const recentStatus6CalculatedRevenue = recentStatus6.reduce(
-        (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp),
+        (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
         0
       );
       
       const recentStatus11Revenue = recentStatus11.reduce(
-        (sum, opp) => sum + (opp["Gross Revenue"] || 0),
+        (sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)),
         0
       );
       const recentStatus11CalculatedRevenue = recentStatus11.reduce(
-        (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp),
+        (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
         0
       );
 
@@ -331,16 +331,16 @@ const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType }
           }}
         >
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            Pipeline Insights
-            {isFiltered && (
-              <Chip
-                label="Filtered View"
-                size="small"
-                color="primary"
-                sx={{ ml: 1, fontWeight: 500 }}
-              />
-            )}
-          </Typography>
+    Pipeline Insights
+    {isFiltered && (
+      <Chip
+        label="Filtered View"
+        size="small"
+        color="primary"
+        sx={{ ml: 1, fontWeight: 500 }}
+      />
+    )}
+  </Typography>
 
           <Chip
             icon={<TimelineIcon />}
