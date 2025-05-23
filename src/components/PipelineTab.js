@@ -53,14 +53,14 @@ const ALL_STATUSES = [
 
 
 // Revenue calculation function to match previous implementation
-const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
+const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
   // Check if segment code is AUTO, CLR, or IEM
   const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
   const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
 
   // If special segment code, return full revenue based on toggle
   if (isSpecialSegmentCode) {
-    return useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+    return showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
   }
 
   // Check each service line (1, 2, and 3)
@@ -71,7 +71,7 @@ const calculateRevenueWithSegmentLogic = (item, useNetRevenue = false) => {
   ];
 
   // Get the base revenue value based on toggle
-  const baseRevenue = useNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
+  const baseRevenue = showNetRevenue ? (item['Net Revenue'] || 0) : (item['Gross Revenue'] || 0);
 
   // Calculate total allocated revenue for Operations
   const operationsAllocation = serviceLines.reduce((total, service) => {
@@ -934,7 +934,7 @@ const handleChartClick = (chartEvent) => {
   color="primary.main"
   gutterBottom
 >
-  {isAllocated ? "Filtered Pipeline" : `Pipeline Overview ${showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}`}
+  {isAllocated ? "Filtered Pipeline" : `Pipeline Overview`}
 </Typography>
 
               <Divider sx={{ my: 2 }} />
@@ -1530,7 +1530,7 @@ const handleChartClick = (chartEvent) => {
             >
               <div>
               <Typography variant="h6" gutterBottom fontWeight={600}>
-  Pipeline by Status {showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}
+  Pipeline by Status
 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Click on chart segments to filter opportunities
@@ -1621,7 +1621,7 @@ const handleChartClick = (chartEvent) => {
             >
               <div>
               <Typography variant="h6" gutterBottom fontWeight={600}>
-  Pipeline by Service Line {showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}
+  Pipeline by Service Line
 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Distribution of revenue across service lines
@@ -1687,7 +1687,7 @@ const handleChartClick = (chartEvent) => {
           <Box>
           <OpportunityList
   data={filteredOpportunities}
-  title={`Pipeline Opportunities ${showNetRevenue ? "(Net Revenue)" : "(Gross Revenue)"}`}
+  title={`Pipeline Opportunities`}
   selectedOpportunities={selectedOpportunities}
   onSelectionChange={onSelection}
   resetFilterCallback={
