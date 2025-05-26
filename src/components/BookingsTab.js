@@ -40,7 +40,6 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import AnimatedRankings from "./AnimatedRankings";
 
 import {
   ComposedChart,
@@ -66,7 +65,6 @@ import {
   getNewWins,
   getNewLosses,
   calculateRevenueWithSegmentLogic,
-
 } from "../utils/dataUtils";
 
 // Format date in French format
@@ -78,8 +76,6 @@ const formatDateFR = (date) => {
     year: "numeric",
   });
 };
-
-
 
 const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
   const theme = useTheme();
@@ -94,9 +90,10 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
   const [totalIOAmount, setTotalIOAmount] = useState(0);
   const [allAccountsBookingsTotal, setAllAccountsBookingsTotal] = useState(0);
   const [allAccountsIOTotal, setAllAccountsIOTotal] = useState(0);
-  const [specialSegmentBookingsTotal, setSpecialSegmentBookingsTotal] = useState(0);
+  const [specialSegmentBookingsTotal, setSpecialSegmentBookingsTotal] =
+    useState(0);
   const [specialSegmentIOTotal, setSpecialSegmentIOTotal] = useState(0);
-  
+
   // Target amount in euros for I&O
   const IO_TARGET = 1000000; // 1 million euros
 
@@ -106,7 +103,7 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
 
     // Filter to only include booked opportunities (Status 14)
     let bookedOpportunities = data.filter((item) => item.Status === 14);
-    
+
     // Apply date range filter if available
     if (dateRange && dateRange[0] && dateRange[1]) {
       bookedOpportunities = bookedOpportunities.filter((item) => {
@@ -117,24 +114,37 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
 
     // Calculate total bookings and I&O amounts for ALL filtered accounts
     const totalAllBookings = bookedOpportunities.reduce(
-      (sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)),
+      (sum, opp) =>
+        sum +
+        (showNetRevenue ? opp["Net Revenue"] || 0 : opp["Gross Revenue"] || 0),
       0
     );
-    
+
     const totalAllIO = bookedOpportunities.reduce(
       (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
       0
     );
-    
+
     // Calculate special segment totals (CLR, IEM, AUTO)
     const specialSegmentBookings = bookedOpportunities
-  .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
-  .reduce((sum, opp) => sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)), 0);
+      .filter((opp) => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
+      .reduce(
+        (sum, opp) =>
+          sum +
+          (showNetRevenue
+            ? opp["Net Revenue"] || 0
+            : opp["Gross Revenue"] || 0),
+        0
+      );
 
-const specialSegmentIO = bookedOpportunities
-  .filter(opp => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
-  .reduce((sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue), 0);
-    
+    const specialSegmentIO = bookedOpportunities
+      .filter((opp) => ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"]))
+      .reduce(
+        (sum, opp) =>
+          sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+        0
+      );
+
     // Group by account
     const accountMap = {};
 
@@ -152,19 +162,24 @@ const specialSegmentIO = bookedOpportunities
           // Track dates for latest booking
           latestBookingDate: null,
           // Track if this is a special segment account
-          hasSpecialSegment: false
+          hasSpecialSegment: false,
         };
       }
 
       // Add to total amount
-      const bookingAmount = showNetRevenue ? (opportunity["Net Revenue"] || 0) : (opportunity["Gross Revenue"] || 0);
-      const calculatedAmount = calculateRevenueWithSegmentLogic(opportunity, showNetRevenue);
+      const bookingAmount = showNetRevenue
+        ? opportunity["Net Revenue"] || 0
+        : opportunity["Gross Revenue"] || 0;
+      const calculatedAmount = calculateRevenueWithSegmentLogic(
+        opportunity,
+        showNetRevenue
+      );
 
       accountMap[account].bookingAmount += bookingAmount;
       accountMap[account].calculatedAmount += calculatedAmount;
       accountMap[account].opportunityCount += 1;
       accountMap[account].opportunities.push(opportunity);
-      
+
       // Check for special segment
       if (["AUTO", "CLR", "IEM"].includes(opportunity["Sub Segment Code"])) {
         accountMap[account].hasSpecialSegment = true;
@@ -198,7 +213,10 @@ const specialSegmentIO = bookedOpportunities
           : 0,
       serviceLines: Array.from(account.serviceLines),
       percentOfTotal: 0, // Will be calculated after sorting
-      ioProgressPercentage: Math.min((account.calculatedAmount / IO_TARGET) * 100, 100) // Calculate progress toward 1M€ target
+      ioProgressPercentage: Math.min(
+        (account.calculatedAmount / IO_TARGET) * 100,
+        100
+      ), // Calculate progress toward 1M€ target
     }));
 
     // Sort by I&O amount (calculatedAmount) by default - largest to smallest
@@ -206,25 +224,25 @@ const specialSegmentIO = bookedOpportunities
 
     // Take top 10 accounts (after sorting by I&O amount)
     const top10 = accountsArray.slice(0, 10);
-    
+
     // Calculate totals for only the top 10 accounts
     const top10BookingsTotal = top10.reduce(
       (sum, account) => sum + account.bookingAmount,
       0
     );
-    
+
     const top10IOTotal = top10.reduce(
       (sum, account) => sum + account.calculatedAmount,
       0
     );
-    
+
     setTotalBookingsAmount(top10BookingsTotal);
     setTotalIOAmount(top10IOTotal);
-    
+
     // Store full period totals for all accounts
     setAllAccountsBookingsTotal(totalAllBookings);
     setAllAccountsIOTotal(totalAllIO);
-    
+
     // Store special segment totals
     setSpecialSegmentBookingsTotal(specialSegmentBookings);
     setSpecialSegmentIOTotal(specialSegmentIO);
@@ -281,11 +299,12 @@ const specialSegmentIO = bookedOpportunities
       <Typography variant="h6" fontWeight={600} gutterBottom>
         Top 10 Accounts
       </Typography>
-      
+
       {/* Date range indicator */}
       {dateRange && dateRange[0] && dateRange[1] && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          For period: {formatDateFR(dateRange[0])} to {formatDateFR(dateRange[1])}
+          For period: {formatDateFR(dateRange[0])} to{" "}
+          {formatDateFR(dateRange[1])}
         </Typography>
       )}
 
@@ -371,20 +390,30 @@ const specialSegmentIO = bookedOpportunities
               <TableBody>
                 {topAccounts.map((account) => {
                   // Check if account has any opportunities with special segment codes
-                  const hasSpecialSegment = account.opportunities.some(opp => 
+                  const hasSpecialSegment = account.opportunities.some((opp) =>
                     ["AUTO", "CLR", "IEM"].includes(opp["Sub Segment Code"])
                   );
-                  
+
                   return (
-                    <TableRow 
-                      key={account.account} 
+                    <TableRow
+                      key={account.account}
                       hover
-                      sx={hasSpecialSegment ? {
-                        backgroundColor: alpha(theme.palette.info.light, 0.15),
-                        '&:hover': {
-                          backgroundColor: alpha(theme.palette.info.light, 0.25),
-                        }
-                      } : {}}
+                      sx={
+                        hasSpecialSegment
+                          ? {
+                              backgroundColor: alpha(
+                                theme.palette.info.light,
+                                0.15
+                              ),
+                              "&:hover": {
+                                backgroundColor: alpha(
+                                  theme.palette.info.light,
+                                  0.25
+                                ),
+                              },
+                            }
+                          : {}
+                      }
                     >
                       <TableCell component="th" scope="row">
                         <Box
@@ -401,7 +430,7 @@ const specialSegmentIO = bookedOpportunities
                                 label="AUTO/CLR/IEM"
                                 size="small"
                                 color="info"
-                                sx={{ ml: 1, height: 20, fontSize: '0.65rem' }}
+                                sx={{ ml: 1, height: 20, fontSize: "0.65rem" }}
                               />
                             )}
                           </Typography>
@@ -419,8 +448,13 @@ const specialSegmentIO = bookedOpportunities
                             maximumFractionDigits: 0,
                           }).format(account.bookingAmount)}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Avg: {new Intl.NumberFormat("fr-FR", {
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          display="block"
+                        >
+                          Avg:{" "}
+                          {new Intl.NumberFormat("fr-FR", {
                             style: "currency",
                             currency: "EUR",
                             minimumFractionDigits: 0,
@@ -429,7 +463,11 @@ const specialSegmentIO = bookedOpportunities
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2" fontWeight={600} color="primary.main">
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          color="primary.main"
+                        >
                           {new Intl.NumberFormat("fr-FR", {
                             style: "currency",
                             currency: "EUR",
@@ -437,28 +475,45 @@ const specialSegmentIO = bookedOpportunities
                             maximumFractionDigits: 0,
                           }).format(account.calculatedAmount)}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {(account.calculatedAmount / account.bookingAmount * 100).toFixed(1)}% of bookings
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          display="block"
+                        >
+                          {(
+                            (account.calculatedAmount / account.bookingAmount) *
+                            100
+                          ).toFixed(1)}
+                          % of bookings
                         </Typography>
                       </TableCell>
                       <TableCell align="right" width="15%">
-                        <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          sx={{ mb: 0.5 }}
+                        >
                           {account.ioProgressPercentage.toFixed(1)}%
                         </Typography>
                       </TableCell>
                       <TableCell width="20%">
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Box sx={{ width: '100%', mr: 1 }}>
+                        <Box sx={{ display: "flex", alignItems: "center" }}>
+                          <Box sx={{ width: "100%", mr: 1 }}>
                             <LinearProgress
                               variant="determinate"
                               value={account.ioProgressPercentage}
                               sx={{
                                 height: 10,
                                 borderRadius: 5,
-                                backgroundColor: alpha(theme.palette.grey[300], 0.5),
-                                '& .MuiLinearProgress-bar': {
+                                backgroundColor: alpha(
+                                  theme.palette.grey[300],
+                                  0.5
+                                ),
+                                "& .MuiLinearProgress-bar": {
                                   borderRadius: 5,
-                                  backgroundColor: getProgressColor(account.ioProgressPercentage),
+                                  backgroundColor: getProgressColor(
+                                    account.ioProgressPercentage
+                                  ),
                                 },
                               }}
                             />
@@ -496,263 +551,404 @@ const specialSegmentIO = bookedOpportunities
           </TableContainer>
 
           <Box
-  sx={{
-    mt: 2,
-    p: 2,
-    borderRadius: 2,
-    backgroundColor: alpha(theme.palette.background.paper, 0.7),
-    border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-    boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.08)}`,
-  }}
->
-  <Grid container spacing={2}>
-    {/* Total Bookings Card */}
-    <Grid item xs={12} md={4}>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 0,
-          height: '100%',
-          borderRadius: 2,
-          overflow: 'hidden',
-          boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.1)}`,
-          border: `1px solid ${alpha(theme.palette.divider, 0.08)}`,
-        }}
-      >
-        <Box 
-          sx={{ 
-            p: 1.5, 
-            backgroundColor: alpha(theme.palette.grey[100], 0.7),
-            borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={600} color="text.primary">
-            Bookings
-          </Typography>
-        </Box>
-        
-        <Box sx={{ p: 2, backgroundColor: alpha(theme.palette.background.paper, 0.9) }}>
-          <Grid container alignItems="center">
-            {/* Total Value */}
-            <Grid item xs={5}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Total
-              </Typography>
-              <Typography variant="subtitle1" fontWeight={700} color="text.primary">
-                {new Intl.NumberFormat("fr-FR", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(allAccountsBookingsTotal)}
-              </Typography>
+            sx={{
+              mt: 2,
+              p: 2,
+              borderRadius: 2,
+              backgroundColor: alpha(theme.palette.background.paper, 0.7),
+              border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+              boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.08)}`,
+            }}
+          >
+            <Grid container spacing={2}>
+              {/* Total Bookings Card */}
+              <Grid item xs={12} md={4}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 0,
+                    height: "100%",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    boxShadow: `0 4px 20px 0 ${alpha(
+                      theme.palette.grey[500],
+                      0.1
+                    )}`,
+                    border: `1px solid ${alpha(theme.palette.divider, 0.08)}`,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      backgroundColor: alpha(theme.palette.grey[100], 0.7),
+                      borderBottom: `1px solid ${alpha(
+                        theme.palette.divider,
+                        0.1
+                      )}`,
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={600}
+                      color="text.primary"
+                    >
+                      Bookings
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      p: 2,
+                      backgroundColor: alpha(
+                        theme.palette.background.paper,
+                        0.9
+                      ),
+                    }}
+                  >
+                    <Grid container alignItems="center">
+                      {/* Total Value */}
+                      <Grid item xs={5}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          gutterBottom
+                        >
+                          Total
+                        </Typography>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={700}
+                          color="text.primary"
+                        >
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(allAccountsBookingsTotal)}
+                        </Typography>
+                      </Grid>
+
+                      {/* Arrow & Percentage */}
+                      <Grid item xs={2} sx={{ textAlign: "center" }}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            fontWeight={600}
+                            color="text.secondary"
+                          >
+                            {(
+                              (totalBookingsAmount / allAccountsBookingsTotal) *
+                              100
+                            ).toFixed(1)}
+                            %
+                          </Typography>
+                          <Box
+                            component="span"
+                            sx={{
+                              color: theme.palette.text.secondary,
+                              fontSize: "1.5rem",
+                              lineHeight: 1,
+                            }}
+                          >
+                            →
+                          </Box>
+                        </Box>
+                      </Grid>
+
+                      {/* Top 10 Value */}
+                      <Grid item xs={5}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          gutterBottom
+                        >
+                          Top 10
+                        </Typography>
+                        <Typography
+                          variant="h6"
+                          fontWeight={700}
+                          color="text.primary"
+                        >
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(totalBookingsAmount)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Paper>
+              </Grid>
+
+              {/* I&O Card */}
+              <Grid item xs={12} md={4}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 0,
+                    height: "100%",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    boxShadow: `0 4px 20px 0 ${alpha(
+                      theme.palette.grey[500],
+                      0.1
+                    )}`,
+                    border: `1px solid ${alpha(
+                      theme.palette.primary.main,
+                      0.2
+                    )}`,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                      borderBottom: `1px solid ${alpha(
+                        theme.palette.primary.main,
+                        0.2
+                      )}`,
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={600}
+                      color="primary.dark"
+                    >
+                      I&O
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      p: 2,
+                      backgroundColor: alpha(theme.palette.primary.light, 0.04),
+                    }}
+                  >
+                    <Grid container alignItems="center">
+                      {/* Total Value */}
+                      <Grid item xs={5}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          gutterBottom
+                        >
+                          Total
+                        </Typography>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={700}
+                          color="primary.main"
+                        >
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(allAccountsIOTotal)}
+                        </Typography>
+                      </Grid>
+
+                      {/* Arrow & Percentage */}
+                      <Grid item xs={2} sx={{ textAlign: "center" }}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            fontWeight={600}
+                            color="primary.main"
+                          >
+                            {(
+                              (totalIOAmount / allAccountsIOTotal) *
+                              100
+                            ).toFixed(1)}
+                            %
+                          </Typography>
+                          <Box
+                            component="span"
+                            sx={{
+                              color: theme.palette.primary.main,
+                              fontSize: "1.5rem",
+                              lineHeight: 1,
+                            }}
+                          >
+                            →
+                          </Box>
+                        </Box>
+                      </Grid>
+
+                      {/* Top 10 Value */}
+                      <Grid item xs={5}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          gutterBottom
+                        >
+                          Top 10
+                        </Typography>
+                        <Typography
+                          variant="h6"
+                          fontWeight={700}
+                          color="primary.main"
+                        >
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(totalIOAmount)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Paper>
+              </Grid>
+
+              {/* AUTO/CLR/IEM Card */}
+              <Grid item xs={12} md={4}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 0,
+                    height: "100%",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    boxShadow: `0 4px 20px 0 ${alpha(
+                      theme.palette.info.main,
+                      0.1
+                    )}`,
+                    border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      backgroundColor: alpha(theme.palette.info.main, 0.1),
+                      borderBottom: `1px solid ${alpha(
+                        theme.palette.info.main,
+                        0.2
+                      )}`,
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={600}
+                      color="info.dark"
+                    >
+                      AUTO/CLR/IEM
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      p: 2,
+                      backgroundColor: alpha(theme.palette.info.light, 0.04),
+                    }}
+                  >
+                    <Grid container alignItems="center">
+                      {/* Total Value */}
+                      <Grid item xs={5}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          gutterBottom
+                        >
+                          Top 10 Total
+                        </Typography>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={700}
+                          color="text.primary"
+                        >
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(totalBookingsAmount)}
+                        </Typography>
+                      </Grid>
+
+                      {/* Arrow & Percentage */}
+                      <Grid item xs={2} sx={{ textAlign: "center" }}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            fontWeight={600}
+                            color="info.main"
+                          >
+                            {totalBookingsAmount > 0
+                              ? (
+                                  (specialSegmentBookingsTotal /
+                                    totalBookingsAmount) *
+                                  100
+                                ).toFixed(1)
+                              : "0.0"}
+                            %
+                          </Typography>
+                          <Box
+                            component="span"
+                            sx={{
+                              color: theme.palette.info.main,
+                              fontSize: "1.5rem",
+                              lineHeight: 1,
+                            }}
+                          >
+                            →
+                          </Box>
+                        </Box>
+                      </Grid>
+
+                      {/* Special Segment Value */}
+                      <Grid item xs={5}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          gutterBottom
+                        >
+                          In Segment
+                        </Typography>
+                        <Typography
+                          variant="h6"
+                          fontWeight={700}
+                          color="info.main"
+                        >
+                          {new Intl.NumberFormat("fr-FR", {
+                            style: "currency",
+                            currency: "EUR",
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(specialSegmentBookingsTotal)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Paper>
+              </Grid>
             </Grid>
-            
-            {/* Arrow & Percentage */}
-            <Grid item xs={2} sx={{ textAlign: 'center' }}>
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Typography variant="caption" fontWeight={600} color="text.secondary">
-                  {(totalBookingsAmount / allAccountsBookingsTotal * 100).toFixed(1)}%
-                </Typography>
-                <Box component="span" sx={{ 
-                  color: theme.palette.text.secondary,
-                  fontSize: '1.5rem',
-                  lineHeight: 1
-                }}>
-                  →
-                </Box>
-              </Box>
-            </Grid>
-            
-            {/* Top 10 Value */}
-            <Grid item xs={5}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Top 10
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="text.primary">
-                {new Intl.NumberFormat("fr-FR", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(totalBookingsAmount)}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Box>
-      </Paper>
-    </Grid>
-    
-    {/* I&O Card */}
-    <Grid item xs={12} md={4}>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 0,
-          height: '100%',
-          borderRadius: 2,
-          overflow: 'hidden',
-          boxShadow: `0 4px 20px 0 ${alpha(theme.palette.grey[500], 0.1)}`,
-          border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-        }}
-      >
-        <Box 
-          sx={{ 
-            p: 1.5, 
-            backgroundColor: alpha(theme.palette.primary.main, 0.1),
-            borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={600} color="primary.dark">
-            I&O
-          </Typography>
-        </Box>
-        
-        <Box sx={{ p: 2, backgroundColor: alpha(theme.palette.primary.light, 0.04) }}>
-          <Grid container alignItems="center">
-            {/* Total Value */}
-            <Grid item xs={5}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Total
-              </Typography>
-              <Typography variant="subtitle1" fontWeight={700} color="primary.main">
-                {new Intl.NumberFormat("fr-FR", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(allAccountsIOTotal)}
-              </Typography>
-            </Grid>
-            
-            {/* Arrow & Percentage */}
-            <Grid item xs={2} sx={{ textAlign: 'center' }}>
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Typography variant="caption" fontWeight={600} color="primary.main">
-                  {(totalIOAmount / allAccountsIOTotal * 100).toFixed(1)}%
-                </Typography>
-                <Box component="span" sx={{ 
-                  color: theme.palette.primary.main,
-                  fontSize: '1.5rem',
-                  lineHeight: 1
-                }}>
-                  →
-                </Box>
-              </Box>
-            </Grid>
-            
-            {/* Top 10 Value */}
-            <Grid item xs={5}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Top 10
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="primary.main">
-                {new Intl.NumberFormat("fr-FR", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(totalIOAmount)}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Box>
-      </Paper>
-    </Grid>
-    
-    {/* AUTO/CLR/IEM Card */}
-    <Grid item xs={12} md={4}>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 0,
-          height: '100%',
-          borderRadius: 2,
-          overflow: 'hidden',
-          boxShadow: `0 4px 20px 0 ${alpha(theme.palette.info.main, 0.1)}`,
-          border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
-        }}
-      >
-        <Box 
-          sx={{ 
-            p: 1.5, 
-            backgroundColor: alpha(theme.palette.info.main, 0.1),
-            borderBottom: `1px solid ${alpha(theme.palette.info.main, 0.2)}`
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={600} color="info.dark">
-            AUTO/CLR/IEM
-          </Typography>
-        </Box>
-        
-        <Box sx={{ p: 2, backgroundColor: alpha(theme.palette.info.light, 0.04) }}>
-          <Grid container alignItems="center">
-            {/* Total Value */}
-            <Grid item xs={5}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Top 10 Total
-              </Typography>
-              <Typography variant="subtitle1" fontWeight={700} color="text.primary">
-                {new Intl.NumberFormat("fr-FR", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(totalBookingsAmount)}
-              </Typography>
-            </Grid>
-            
-            {/* Arrow & Percentage */}
-            <Grid item xs={2} sx={{ textAlign: 'center' }}>
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Typography variant="caption" fontWeight={600} color="info.main">
-                  {totalBookingsAmount > 0 ? (specialSegmentBookingsTotal / totalBookingsAmount * 100).toFixed(1) : "0.0"}%
-                </Typography>
-                <Box component="span" sx={{ 
-                  color: theme.palette.info.main,
-                  fontSize: '1.5rem',
-                  lineHeight: 1
-                }}>
-                  →
-                </Box>
-              </Box>
-            </Grid>
-            
-            {/* Special Segment Value */}
-            <Grid item xs={5}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                In Segment
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="info.main">
-                {new Intl.NumberFormat("fr-FR", {
-                  style: "currency",
-                  currency: "EUR",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }).format(specialSegmentBookingsTotal)}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Box>
-      </Paper>
-    </Grid>
-  </Grid>
-</Box>
+          </Box>
         </Grid>
       </Grid>
     </Paper>
@@ -840,7 +1036,9 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
         onClick={updateDateAnalysis}
         color="primary"
         sx={{ ml: 1 }}
-      >      </Button>
+      >
+        {" "}
+      </Button>
 
       <IconButton
         size="small"
@@ -854,19 +1052,25 @@ const PeriodFilter = ({ dateRange, setDateRange, updateDateAnalysis }) => {
   );
 };
 
-const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNetRevenue = false }) => {
+const BookingsTab = ({
+  data,
+  loading,
+  onSelection,
+  selectedOpportunities,
+  showNetRevenue = false,
+}) => {
   const [yoyBookings, setYoyBookings] = useState([]);
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
   const [totalBookings, setTotalBookings] = useState(0);
   const [filteredOpportunities, setFilteredOpportunities] = useState([]);
-  
+
   // Set default date range to January 1st of current year to today
   const currentYear = new Date().getFullYear();
   const [dateRange, setDateRange] = useState([
     new Date(currentYear, 0, 1), // January 1st of current year
     new Date(), // Today
   ]);
-  
+
   const [newOpportunities, setNewOpportunities] = useState([]);
   const [newWins, setNewWins] = useState([]);
   const [newLosses, setNewLosses] = useState([]);
@@ -908,10 +1112,10 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
   // Update date analysis method to use Last Status Change Date
   const updateDateAnalysis = () => {
     if (!data) return;
-    
+
     const startDate = dateRange[0] || new Date(currentYear, 0, 1);
     const endDate = dateRange[1] || new Date();
-    
+
     // Get new bookings and losses within the date range
     const wins = data.filter((item) => {
       if (item["Status"] !== 14) return false;
@@ -919,17 +1123,17 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
       const statusDate = new Date(item["Last Status Change Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
-  
+
     const losses = data.filter((item) => {
       if (item["Status"] !== 15) return false;
       if (!item["Last Status Change Date"]) return false;
       const statusDate = new Date(item["Last Status Change Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
-  
+
     setNewWins(wins);
     setNewLosses(losses);
-  
+
     // Update filtered opportunities based on current tab
     if (analysisTab === 0) {
       setFilteredOpportunities(wins);
@@ -942,7 +1146,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
   const calculateCumulativeTotals = (bookingsData) => {
     return bookingsData.map((monthData, index) => {
       const cumulativeMonth = { ...monthData };
-  
+
       // Calculate cumulative totals for each year
       years.forEach((year) => {
         // Sum all previous months' values for this year
@@ -951,17 +1155,17 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
           .reduce((sum, prevMonth) => {
             return sum + (prevMonth[year] || 0);
           }, 0);
-  
+
         // Add cumulative value for this year
         cumulativeMonth[`${year}_cumulative`] = cumulativeValue;
-        
+
         // NEW: Create cumulative opportunities list for this year
         // Collect all opportunities from all previous months up to and including current month
         cumulativeMonth[`${year}Opps_cumulative`] = bookingsData
           .slice(0, index + 1)
-          .flatMap(prevMonth => prevMonth[`${year}Opps`] || []);
+          .flatMap((prevMonth) => prevMonth[`${year}Opps`] || []);
       });
-  
+
       return cumulativeMonth;
     });
   };
@@ -1010,19 +1214,19 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
     if (active && payload && payload.length) {
       // Group entries by year
       const entriesByYear = {};
-      
+
       // First pass: organize data by year
-      payload.forEach(entry => {
+      payload.forEach((entry) => {
         // Defensive check for dataKey
         const dataKey = String(entry.dataKey || "");
-        
+
         // Parse year and type (regular or cumulative)
         const isCumulative = dataKey.includes("_cumulative");
         const year = dataKey.replace("_cumulative", "");
-        
+
         // Skip entries that don't look like valid year data
         if (!/^\d+(_cumulative)?$/.test(dataKey)) return;
-        
+
         // Initialize year entry if not exists
         if (!entriesByYear[year]) {
           entriesByYear[year] = {
@@ -1034,10 +1238,10 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
             oppCount: 0,
             oppCountCumulative: 0,
             ioValue: 0,
-            ioValueCumulative: 0
+            ioValueCumulative: 0,
           };
         }
-        
+
         // Set value based on type
         if (isCumulative) {
           entriesByYear[year].cumulative = entry.value || 0;
@@ -1047,33 +1251,36 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
           entriesByYear[year].color = entry.color;
         }
       });
-      
+
       // Second pass: add opportunities count and I&O values
-      Object.keys(entriesByYear).forEach(year => {
+      Object.keys(entriesByYear).forEach((year) => {
         // Get monthly opportunity list
         const oppList = payload[0].payload[`${year}Opps`] || [];
         entriesByYear[year].oppCount = oppList.length || 0;
-        
+
         // Calculate I&O value for monthly data directly from opportunities
         entriesByYear[year].ioValue = oppList.reduce(
-          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+          (sum, opp) =>
+            sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
           0
         );
-        
+
         // NEW: Get cumulative opportunity list
-        const cumulativeOppList = payload[0].payload[`${year}Opps_cumulative`] || [];
+        const cumulativeOppList =
+          payload[0].payload[`${year}Opps_cumulative`] || [];
         entriesByYear[year].oppCountCumulative = cumulativeOppList.length || 0;
-        
+
         // NEW: Calculate cumulative I&O directly from cumulative opportunity list
         entriesByYear[year].ioValueCumulative = cumulativeOppList.reduce(
-          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+          (sum, opp) =>
+            sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
           0
         );
       });
-      
+
       // Get sorted years (ensuring 2024 before 2025)
       const sortedYears = Object.keys(entriesByYear).sort();
-    
+
       return (
         <Card
           sx={{
@@ -1083,14 +1290,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
             borderColor: alpha(theme.palette.primary.main, 0.1),
             boxShadow: theme.shadows[3],
             borderRadius: 2,
-            maxWidth: 300
+            maxWidth: 300,
           }}
         >
           <Typography variant="subtitle2" fontWeight={600} mb={1}>
             {label}
           </Typography>
-          
-          {sortedYears.map(year => {
+
+          {sortedYears.map((year) => {
             const yearData = entriesByYear[year];
             return (
               <Box key={year} sx={{ mb: 1.5 }}>
@@ -1098,7 +1305,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
                   Year {year}
                 </Typography>
-                
+
                 {/* Monthly Value */}
                 <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
                   <Box
@@ -1110,10 +1317,17 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                       mr: 1,
                     }}
                   />
-                  <Typography variant="body2" sx={{ mr: 1, fontSize: "0.825rem" }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ mr: 1, fontSize: "0.825rem" }}
+                  >
                     Monthly:
                   </Typography>
-                  <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.825rem" }}>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ fontSize: "0.825rem" }}
+                  >
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1121,33 +1335,48 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                       maximumFractionDigits: 0,
                     }).format(yearData.regular || 0)}
                     {yearData.oppCount > 0 && (
-                      <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 0.5 }}>
-                        (I&O: {new Intl.NumberFormat("fr-FR", {
+                      <Typography
+                        component="span"
+                        variant="caption"
+                        color="primary.main"
+                        sx={{ ml: 0.5 }}
+                      >
+                        (I&O:{" "}
+                        {new Intl.NumberFormat("fr-FR", {
                           style: "currency",
                           currency: "EUR",
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
-                        }).format(yearData.ioValue)})
+                        }).format(yearData.ioValue)}
+                        )
                       </Typography>
                     )}
                   </Typography>
                 </Box>
-                
+
                 {/* Cumulative Value */}
                 <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
                   <Box
                     sx={{
                       width: 10,
                       height: 10,
-                      backgroundColor: yearData.cumulativeColor || yearData.color,
+                      backgroundColor:
+                        yearData.cumulativeColor || yearData.color,
                       borderRadius: "50%",
                       mr: 1,
                     }}
                   />
-                  <Typography variant="body2" sx={{ mr: 1, fontSize: "0.825rem" }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ mr: 1, fontSize: "0.825rem" }}
+                  >
                     Cumulative:
                   </Typography>
-                  <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.825rem" }}>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ fontSize: "0.825rem" }}
+                  >
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1155,20 +1384,31 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                       maximumFractionDigits: 0,
                     }).format(yearData.cumulative || 0)}
                     {yearData.oppCountCumulative > 0 && (
-                      <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 0.5 }}>
-                        (I&O: {new Intl.NumberFormat("fr-FR", {
+                      <Typography
+                        component="span"
+                        variant="caption"
+                        color="primary.main"
+                        sx={{ ml: 0.5 }}
+                      >
+                        (I&O:{" "}
+                        {new Intl.NumberFormat("fr-FR", {
                           style: "currency",
                           currency: "EUR",
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
-                        }).format(yearData.ioValueCumulative)})
+                        }).format(yearData.ioValueCumulative)}
+                        )
                       </Typography>
                     )}
                   </Typography>
                 </Box>
-                
+
                 {/* Opportunities Count */}
-                <Typography variant="caption" color="text.secondary" sx={{ pl: 3 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ pl: 3 }}
+                >
                   {yearData.oppCountCumulative} total opportunities
                 </Typography>
               </Box>
@@ -1180,33 +1420,35 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
     return null;
   };
 
-  
   // Add this useEffect to trigger the initial data processing and chart population
   useEffect(() => {
     if (data && data.length > 0 && !loading) {
       // Process data for chart when component mounts
       const bookedData = data.filter((item) => item["Status"] === 14);
-      
+
       // Log what revenue type we're using
-      console.log("Chart using revenue type:", showNetRevenue ? "Net Revenue" : "Gross Revenue");
-      
+      console.log(
+        "Chart using revenue type:",
+        showNetRevenue ? "Net Revenue" : "Gross Revenue"
+      );
+
       const monthly = getMonthlyYearlyTotals(
         bookedData,
         "Last Status Change Date",
         showNetRevenue ? "Net Revenue" : "Gross Revenue"
       );
-      
+
       const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
       setYears(uniqueYears);
-  
+
       // Format data for YoY comparison
       const yoyData = formatYearOverYearData(monthly);
       setYoyBookings(yoyData);
-  
+
       // Calculate cumulative data
       const cumData = calculateCumulativeTotals(yoyData);
       setCumulativeData(cumData);
-      
+
       // Also trigger the date analysis to ensure filtered opportunities are set
       updateDateAnalysis();
     }
@@ -1221,17 +1463,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
 
   useEffect(() => {
     if (!data || loading) return;
-  
+
     // Reset filtered opportunities
     setFilteredOpportunities(data);
-  
+
     // Calculate total bookings revenue - use correct field based on showNetRevenue
-    const total = sumBy(
-      data,
-      showNetRevenue ? "Net Revenue" : "Gross Revenue"
-    );
+    const total = sumBy(data, showNetRevenue ? "Net Revenue" : "Gross Revenue");
     setTotalBookings(total);
-  
+
     // Calculate monthly yearly bookings for the bar chart
     const bookedData = data.filter((item) => item["Status"] === 14);
     const monthly = getMonthlyYearlyTotals(
@@ -1239,14 +1478,14 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
       "Last Status Change Date",
       showNetRevenue ? "Net Revenue" : "Gross Revenue"
     );
-    
+
     const uniqueYears = [...new Set(monthly.map((item) => item.year))].sort();
     setYears(uniqueYears);
-  
+
     // Format data for YoY comparison
     const yoyData = formatYearOverYearData(monthly);
     setYoyBookings(yoyData);
-  
+
     // Calculate cumulative data
     const cumData = calculateCumulativeTotals(yoyData);
     setCumulativeData(cumData);
@@ -1283,7 +1522,7 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
 
     // Calculate new opportunities, wins, and losses
     updateDateAnalysis();
-}, [data, loading, showNetRevenue]); 
+  }, [data, loading, showNetRevenue]);
 
   // Bookings 2025 calculation with new revenue logic
   const bookings2025 = data.filter(
@@ -1302,16 +1541,20 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
 
   // Calculate revenues with new logic
   const bookings2025Revenue = bookings2025.reduce(
-    (sum, item) => sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
+    (sum, item) =>
+      sum +
+      (showNetRevenue ? item["Net Revenue"] || 0 : item["Gross Revenue"] || 0),
     0
   );
   const losses2025Revenue = losses2025.reduce(
-    (sum, item) => sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
+    (sum, item) =>
+      sum +
+      (showNetRevenue ? item["Net Revenue"] || 0 : item["Gross Revenue"] || 0),
     0
   );
   // Calculate average booking size
   const averageBookingSize2025 =
-  bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
+    bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
 
   return (
     <Fade in={!loading} timeout={500}>
@@ -1360,29 +1603,46 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                   mb: 2,
                 }}
               >
-<Box>
-  <Typography
-    variant="h5"
-    color="primary.main"
-    fontWeight={700}
-    sx={{ mb: 0.5 }}
-  >
-    {new Intl.NumberFormat("fr-FR", {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(bookings2025Revenue)}
-    <Typography component="span" variant="caption" color="primary.dark" sx={{ ml: 1 }}>
-      (I&O: {new Intl.NumberFormat("fr-FR", {
-        style: "currency",
-        currency: "EUR",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(bookings2025.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0))})
-    </Typography>
-  </Typography>
-</Box>
+                <Box>
+                  <Typography
+                    variant="h5"
+                    color="primary.main"
+                    fontWeight={700}
+                    sx={{ mb: 0.5 }}
+                  >
+                    {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(bookings2025Revenue)}
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      color="primary.dark"
+                      sx={{ ml: 1 }}
+                    >
+                      (I&O:{" "}
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        bookings2025.reduce(
+                          (sum, item) =>
+                            sum +
+                            calculateRevenueWithSegmentLogic(
+                              item,
+                              showNetRevenue
+                            ),
+                          0
+                        )
+                      )}
+                      )
+                    </Typography>
+                  </Typography>
+                </Box>
               </Box>
 
               <Box
@@ -1565,31 +1825,46 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                 }}
               >
                 <Box>
-                <Typography
-  variant="h5"
-  color="secondary.main"
-  fontWeight={700}
-  sx={{ mb: 0.5 }}
->
-  {new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(averageBookingSize2025)}
-  <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
-    (I&O: {new Intl.NumberFormat("fr-FR", {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(
-      bookings2025.length > 0 
-        ? bookings2025.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0) / bookings2025.length 
-        : 0
-    )})
-  </Typography>
-</Typography>
+                  <Typography
+                    variant="h5"
+                    color="secondary.main"
+                    fontWeight={700}
+                    sx={{ mb: 0.5 }}
+                  >
+                    {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(averageBookingSize2025)}
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      color="primary.main"
+                      sx={{ ml: 1 }}
+                    >
+                      (I&O:{" "}
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        bookings2025.length > 0
+                          ? bookings2025.reduce(
+                              (sum, item) =>
+                                sum +
+                                calculateRevenueWithSegmentLogic(
+                                  item,
+                                  showNetRevenue
+                                ),
+                              0
+                            ) / bookings2025.length
+                          : 0
+                      )}
+                      )
+                    </Typography>
+                  </Typography>
                 </Box>
               </Box>
 
@@ -1600,42 +1875,50 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                   alignItems: "center",
                 }}
               >
-           <Typography variant="body2" color="text.secondary">
-  Range:{" "}
-  {bookings2025.length > 0 ? (
-    <>
-      {new Intl.NumberFormat("fr-FR", {
-        style: "currency",
-        currency: "EUR",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(
-        Math.min(
-          ...bookings2025.filter(opp => 
-            showNetRevenue ? (opp["Net Revenue"] > 0) : (opp["Gross Revenue"] > 0)
-          ).map(
-            (opp) => showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)
-          )
-        )
-      )}
-      {" "}-{" "}
-      {new Intl.NumberFormat("fr-FR", {
-        style: "currency",
-        currency: "EUR",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(
-        Math.max(
-          ...bookings2025.map(
-            (opp) => showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0)
-          )
-        )
-      )}
-    </>
-  ) : (
-    "N/A"
-  )}
-</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Range:{" "}
+                  {bookings2025.length > 0 ? (
+                    <>
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        Math.min(
+                          ...bookings2025
+                            .filter((opp) =>
+                              showNetRevenue
+                                ? opp["Net Revenue"] > 0
+                                : opp["Gross Revenue"] > 0
+                            )
+                            .map((opp) =>
+                              showNetRevenue
+                                ? opp["Net Revenue"] || 0
+                                : opp["Gross Revenue"] || 0
+                            )
+                        )
+                      )}{" "}
+                      -{" "}
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(
+                        Math.max(
+                          ...bookings2025.map((opp) =>
+                            showNetRevenue
+                              ? opp["Net Revenue"] || 0
+                              : opp["Gross Revenue"] || 0
+                          )
+                        )
+                      )}
+                    </>
+                  ) : (
+                    "N/A"
+                  )}
+                </Typography>
 
                 <Box
                   sx={{
@@ -1738,41 +2021,43 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
                 <Legend />
 
                 {/* Bars and Lines for each year */}
-               {years.map((year, index) => {
-  const colorSet = COLORS[index % COLORS.length];
-  return (
-    <React.Fragment key={year}>
-      {/* Monthly Bars */}
-      <Bar
-        yAxisId="monthly"
-        dataKey={year}
-        name={`${year} Monthly (${showNetRevenue ? "Net Revenue" : "Gross Revenue"})`}
-        fill={colorSet.bar}
-        fillOpacity={colorSet.opacity}
-        stackId={`${year}-stack`}
-      />
+                {years.map((year, index) => {
+                  const colorSet = COLORS[index % COLORS.length];
+                  return (
+                    <React.Fragment key={year}>
+                      {/* Monthly Bars */}
+                      <Bar
+                        yAxisId="monthly"
+                        dataKey={year}
+                        name={`${year} Monthly (${
+                          showNetRevenue ? "Net Revenue" : "Gross Revenue"
+                        })`}
+                        fill={colorSet.bar}
+                        fillOpacity={colorSet.opacity}
+                        stackId={`${year}-stack`}
+                      />
 
-      {/* Cumulative Line */}
-      <Line
-        yAxisId="cumulative"
-        type="monotone"
-        dataKey={`${year}_cumulative`}
-        name={`${year} Cumulative (${showNetRevenue ? "Net Revenue" : "Gross Revenue"})`}
-        stroke={colorSet.line}
-        strokeWidth={3}
-        dot={false}
-      />
-    </React.Fragment>
-  );
-})}
+                      {/* Cumulative Line */}
+                      <Line
+                        yAxisId="cumulative"
+                        type="monotone"
+                        dataKey={`${year}_cumulative`}
+                        name={`${year} Cumulative (${
+                          showNetRevenue ? "Net Revenue" : "Gross Revenue"
+                        })`}
+                        stroke={colorSet.line}
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    </React.Fragment>
+                  );
+                })}
               </ComposedChart>
             </ResponsiveContainer>
           </Paper>
         </Grid>
 
-        <Grid item xs={12}>
-  <AnimatedRankings data={data} />
-</Grid>
+        <Grid item xs={12}></Grid>
         {/* Period Filter MOVED HERE - between chart and Top 10 accounts */}
         <Grid item xs={12}>
           <PeriodFilter
@@ -1783,7 +2068,11 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
         </Grid>
 
         {/* NEW: Top 10 Accounts Section with date range filter */}
-        <TopAccountsSection data={data} dateRange={dateRange} showNetRevenue={showNetRevenue} />
+        <TopAccountsSection
+          data={data}
+          dateRange={dateRange}
+          showNetRevenue={showNetRevenue}
+        />
 
         {/* Period Analysis Results - Improved Design */}
         <Grid item xs={12}>
@@ -1799,10 +2088,11 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
             <Typography variant="h6" gutterBottom fontWeight={600}>
               Period Analysis Results
             </Typography>
-            
+
             {/* Date range indicator */}
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              For period: {formatDateFR(dateRange[0])} to {formatDateFR(dateRange[1])}
+              For period: {formatDateFR(dateRange[0])} to{" "}
+              {formatDateFR(dateRange[1])}
             </Typography>
 
             <Divider sx={{ mb: 3 }} />
@@ -1812,151 +2102,301 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
               onChange={handleAnalysisTabChange}
               aria-label="analysis tabs"
               variant="fullWidth"
-              sx={{ 
+              sx={{
                 mb: 3,
-                '& .MuiTab-root': {
-                  fontWeight: 600
+                "& .MuiTab-root": {
+                  fontWeight: 600,
                 },
-                '& .Mui-selected': {
+                "& .Mui-selected": {
                   backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                  borderRadius: '8px 8px 0 0'
-                }
+                  borderRadius: "8px 8px 0 0",
+                },
               }}
             >
-              <Tab 
+              <Tab
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <Typography variant="body1">Wins</Typography>
-                    <Chip 
-                      label={newWins.length} 
-                      size="small" 
-                      color="success" 
-                      sx={{ fontWeight: 'bold' }}
+                    <Chip
+                      label={newWins.length}
+                      size="small"
+                      color="success"
+                      sx={{ fontWeight: "bold" }}
                     />
                   </Box>
-                } 
+                }
               />
-              <Tab 
+              <Tab
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <Typography variant="body1">Lost</Typography>
-                    <Chip 
-                      label={newLosses.length} 
-                      size="small" 
+                    <Chip
+                      label={newLosses.length}
+                      size="small"
                       color="error"
-                      sx={{ fontWeight: 'bold' }}
+                      sx={{ fontWeight: "bold" }}
                     />
                   </Box>
-                } 
+                }
               />
             </Tabs>
 
             <Box sx={{ mb: 3 }}>
               {analysisTab === 0 && (
-                <Box sx={{ 
-                  backgroundColor: alpha(theme.palette.success.main, 0.05),
-                  borderRadius: 2,
-                  p: 2,
-                  border: `1px solid ${alpha(theme.palette.success.main, 0.1)}`
-                }}>
+                <Box
+                  sx={{
+                    backgroundColor: alpha(theme.palette.success.main, 0.05),
+                    borderRadius: 2,
+                    p: 2,
+                    border: `1px solid ${alpha(
+                      theme.palette.success.main,
+                      0.1
+                    )}`,
+                  }}
+                >
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle1" fontWeight={600} color="success.main" gutterBottom>
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={600}
+                        color="success.main"
+                        gutterBottom
+                      >
                         Won Opportunities in Selected Period
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Total number of opportunities won: <strong>{newWins.length}</strong>
+                        Total number of opportunities won:{" "}
+                        <strong>{newWins.length}</strong>
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Average win size: <strong>
+                        Average win size:{" "}
+                        <strong>
                           {new Intl.NumberFormat("fr-FR", {
-                            style: "currency", 
+                            style: "currency",
                             currency: "EUR",
                             minimumFractionDigits: 0,
-                            maximumFractionDigits: 0
-                          }).format(newWins.length > 0 ? sumBy(newWins, "Gross Revenue") / newWins.length : 0)}
+                            maximumFractionDigits: 0,
+                          }).format(
+                            newWins.length > 0
+                              ? sumBy(newWins, "Gross Revenue") / newWins.length
+                              : 0
+                          )}
                         </strong>
                       </Typography>
                     </Grid>
-                    <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
-                    <Typography variant="h5" fontWeight={700} color="success.main">
-  {new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(sumBy(newWins, showNetRevenue ? "Net Revenue" : "Gross Revenue"))}
-</Typography>
-                      
+                    <Grid
+                      item
+                      xs={12}
+                      md={6}
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        alignItems: "flex-end",
+                      }}
+                    >
+                      <Typography
+                        variant="h5"
+                        fontWeight={700}
+                        color="success.main"
+                      >
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(
+                          sumBy(
+                            newWins,
+                            showNetRevenue ? "Net Revenue" : "Gross Revenue"
+                          )
+                        )}
+                      </Typography>
+
                       {/* I&O amount directly below the main figure */}
-                      <Typography variant="body1" fontWeight={600} color="primary.main" sx={{ mt: 0.5 }}>
-  {new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0))}
-  {newWins.length > 0 && (
-    <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
-      ({(newWins.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0) / sumBy(newWins, showNetRevenue ? "Net Revenue" : "Gross Revenue") * 100).toFixed(1)}%)
-    </Typography>
-  )}
-</Typography>
+                      <Typography
+                        variant="body1"
+                        fontWeight={600}
+                        color="primary.main"
+                        sx={{ mt: 0.5 }}
+                      >
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(
+                          newWins.reduce(
+                            (sum, item) =>
+                              sum +
+                              calculateRevenueWithSegmentLogic(
+                                item,
+                                showNetRevenue
+                              ),
+                            0
+                          )
+                        )}
+                        {newWins.length > 0 && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="primary.main"
+                            sx={{ ml: 1 }}
+                          >
+                            (
+                            {(
+                              (newWins.reduce(
+                                (sum, item) =>
+                                  sum +
+                                  calculateRevenueWithSegmentLogic(
+                                    item,
+                                    showNetRevenue
+                                  ),
+                                0
+                              ) /
+                                sumBy(
+                                  newWins,
+                                  showNetRevenue
+                                    ? "Net Revenue"
+                                    : "Gross Revenue"
+                                )) *
+                              100
+                            ).toFixed(1)}
+                            %)
+                          </Typography>
+                        )}
+                      </Typography>
                     </Grid>
                   </Grid>
                 </Box>
               )}
 
               {analysisTab === 1 && (
-                <Box sx={{ 
-                  backgroundColor: alpha(theme.palette.error.main, 0.05),
-                  borderRadius: 2,
-                  p: 2,
-                  border: `1px solid ${alpha(theme.palette.error.main, 0.1)}`
-                }}>
+                <Box
+                  sx={{
+                    backgroundColor: alpha(theme.palette.error.main, 0.05),
+                    borderRadius: 2,
+                    p: 2,
+                    border: `1px solid ${alpha(theme.palette.error.main, 0.1)}`,
+                  }}
+                >
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle1" fontWeight={600} color="error.main" gutterBottom>
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={600}
+                        color="error.main"
+                        gutterBottom
+                      >
                         Lost Opportunities in Selected Period
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Total number of opportunities lost: <strong>{newLosses.length}</strong>
+                        Total number of opportunities lost:{" "}
+                        <strong>{newLosses.length}</strong>
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Average loss size: <strong>
+                        Average loss size:{" "}
+                        <strong>
                           {new Intl.NumberFormat("fr-FR", {
-                            style: "currency", 
+                            style: "currency",
                             currency: "EUR",
                             minimumFractionDigits: 0,
-                            maximumFractionDigits: 0
-                          }).format(newLosses.length > 0 ? sumBy(newLosses, showNetRevenue ? "Net Revenue" : "Gross Revenue") / newLosses.length : 0)}
-                          </strong>
+                            maximumFractionDigits: 0,
+                          }).format(
+                            newLosses.length > 0
+                              ? sumBy(
+                                  newLosses,
+                                  showNetRevenue
+                                    ? "Net Revenue"
+                                    : "Gross Revenue"
+                                ) / newLosses.length
+                              : 0
+                          )}
+                        </strong>
                       </Typography>
                     </Grid>
-                    <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
-                    <Typography variant="h5" fontWeight={700} color="error.main">
-  {new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(sumBy(newLosses, showNetRevenue ? "Net Revenue" : "Gross Revenue"))}
-</Typography>
-                      
+                    <Grid
+                      item
+                      xs={12}
+                      md={6}
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        alignItems: "flex-end",
+                      }}
+                    >
+                      <Typography
+                        variant="h5"
+                        fontWeight={700}
+                        color="error.main"
+                      >
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(
+                          sumBy(
+                            newLosses,
+                            showNetRevenue ? "Net Revenue" : "Gross Revenue"
+                          )
+                        )}
+                      </Typography>
+
                       {/* I&O amount directly below the main figure */}
-                      <Typography variant="body1" fontWeight={600} color="primary.main" sx={{ mt: 0.5 }}>
-  {new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0))}
-  {newLosses.length > 0 && (
-    <Typography component="span" variant="caption" color="primary.main" sx={{ ml: 1 }}>
-      ({(newLosses.reduce((sum, item) => sum + calculateRevenueWithSegmentLogic(item, showNetRevenue), 0) / sumBy(newLosses, showNetRevenue ? "Net Revenue" : "Gross Revenue") * 100).toFixed(1)}%)
-    </Typography>
-  )}
-</Typography>
+                      <Typography
+                        variant="body1"
+                        fontWeight={600}
+                        color="primary.main"
+                        sx={{ mt: 0.5 }}
+                      >
+                        {new Intl.NumberFormat("fr-FR", {
+                          style: "currency",
+                          currency: "EUR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(
+                          newLosses.reduce(
+                            (sum, item) =>
+                              sum +
+                              calculateRevenueWithSegmentLogic(
+                                item,
+                                showNetRevenue
+                              ),
+                            0
+                          )
+                        )}
+                        {newLosses.length > 0 && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="primary.main"
+                            sx={{ ml: 1 }}
+                          >
+                            (
+                            {(
+                              (newLosses.reduce(
+                                (sum, item) =>
+                                  sum +
+                                  calculateRevenueWithSegmentLogic(
+                                    item,
+                                    showNetRevenue
+                                  ),
+                                0
+                              ) /
+                                sumBy(
+                                  newLosses,
+                                  showNetRevenue
+                                    ? "Net Revenue"
+                                    : "Gross Revenue"
+                                )) *
+                              100
+                            ).toFixed(1)}
+                            %)
+                          </Typography>
+                        )}
+                      </Typography>
                     </Grid>
                   </Grid>
                 </Box>
@@ -1967,13 +2407,13 @@ const BookingsTab = ({ data, loading, onSelection, selectedOpportunities, showNe
 
         {/* Opportunity List */}
         <Grid item xs={12} sx={{ mt: 3 }}>
-        <OpportunityList
-          data={filteredOpportunities}
-          title={`Bookings`}
-          selectedOpportunities={selectedOpportunities}
-          onSelectionChange={onSelection}
-          showNetRevenue={showNetRevenue}
-        />
+          <OpportunityList
+            data={filteredOpportunities}
+            title={`Bookings`}
+            selectedOpportunities={selectedOpportunities}
+            onSelectionChange={onSelection}
+            showNetRevenue={showNetRevenue}
+          />
         </Grid>
       </Box>
     </Fade>
