@@ -152,29 +152,44 @@ export const sumBy = (data, column) => {
 /**
  * Calculates revenue with segment and service line logic
  * @param {Object} item - The opportunity item
+ * @param {boolean} useNetRevenue - Whether to use net revenue instead of gross
  * @returns {number} Calculated revenue
  */
-const calculateRevenueWithSegmentLogic = (item) => {
+export const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
   // Check if segment code is AUTO, CLR, or IEM
-  const specialSegmentCodes = ['AUTO', 'CLR', 'IEM'];
-  const isSpecialSegmentCode = specialSegmentCodes.includes(item['Sub Segment Code']);
+  const specialSegmentCodes = ["AUTO", "CLR", "IEM"];
+  const isSpecialSegmentCode = specialSegmentCodes.includes(
+    item["Sub Segment Code"]
+  );
 
-  // If special segment code, return full gross revenue
+  // If special segment code, return full revenue based on toggle
   if (isSpecialSegmentCode) {
-    return item['Gross Revenue'] || 0;
+    return showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0);
   }
 
   // Check each service line (1, 2, and 3)
   const serviceLines = [
-    { line: item['Service Line 1'], percentage: item['Service Offering 1 %'] || 0 },
-    { line: item['Service Line 2'], percentage: item['Service Offering 2 %'] || 0 },
-    { line: item['Service Line 3'], percentage: item['Service Offering 3 %'] || 0 }
+    {
+      line: item["Service Line 1"],
+      percentage: item["Service Offering 1 %"] || 0,
+    },
+    {
+      line: item["Service Line 2"],
+      percentage: item["Service Offering 2 %"] || 0,
+    },
+    {
+      line: item["Service Line 3"],
+      percentage: item["Service Offering 3 %"] || 0,
+    },
   ];
+
+  // Get the base revenue value based on toggle
+  const baseRevenue = showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0);
 
   // Calculate total allocated revenue for Operations
   const operationsAllocation = serviceLines.reduce((total, service) => {
-    if (service.line === 'Operations') {
-      return total + ((item['Gross Revenue'] || 0) * (service.percentage / 100));
+    if (service.line === "Operations") {
+      return total + (baseRevenue * (service.percentage / 100));
     }
     return total;
   }, 0);
@@ -184,8 +199,8 @@ const calculateRevenueWithSegmentLogic = (item) => {
     return operationsAllocation;
   }
 
-  // If no specific Operations allocation, return full gross revenue
-  return item['Gross Revenue'] || 0;
+  // If no specific Operations allocation, return full revenue
+  return baseRevenue;
 };
 
 /**
@@ -197,6 +212,7 @@ const calculateRevenueWithSegmentLogic = (item) => {
  */
 export const getMonthlyYearlyTotals = (data, dateColumn, valueColumn) => {
   const monthlyYearlyData = {};
+  const useNetRevenue = valueColumn === 'Net Revenue';
 
   data.forEach((item) => {
     if (!item[dateColumn]) return;
@@ -219,8 +235,15 @@ export const getMonthlyYearlyTotals = (data, dateColumn, valueColumn) => {
       };
     }
 
-    // Use the new revenue calculation method
-    const actualValue = calculateRevenueWithSegmentLogic(item);
+    // Determine the actual value based on valueColumn
+    let actualValue;
+    if (valueColumn === 'Calculated I&O') {
+      // Use the revenue calculation method with appropriate parameter
+      actualValue = calculateRevenueWithSegmentLogic(item, useNetRevenue);
+    } else {
+      // Use the direct column value
+      actualValue = item[valueColumn] || 0;
+    }
 
     monthlyYearlyData[monthYear].total += actualValue;
     monthlyYearlyData[monthYear].count += 1;
@@ -230,7 +253,6 @@ export const getMonthlyYearlyTotals = (data, dateColumn, valueColumn) => {
   // Convert to array
   return Object.values(monthlyYearlyData);
 };
-
 /**
  * Formats monthly yearly data for year-over-year comparison charts
  * @param {Array} monthlyYearlyData - Data from getMonthlyYearlyTotals
