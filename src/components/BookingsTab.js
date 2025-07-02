@@ -1144,32 +1144,105 @@ const BookingsTab = ({
 
   // Calculate cumulative data for years
   const calculateCumulativeTotals = (bookingsData) => {
-    return bookingsData.map((monthData, index) => {
+    const result = bookingsData.map((monthData, index) => {
       const cumulativeMonth = { ...monthData };
-
+  
       // Calculate cumulative totals for each year
       years.forEach((year) => {
-        // Sum all previous months' values for this year
+        // Get monthly opportunities for this year
+        const monthlyOpps = monthData[`${year}Opps`] || [];
+        
+        // Calculate I&O revenue for this month
+        const monthlyIORevenue = monthlyOpps.reduce(
+          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+          0
+        );
+        
+        // Calculate total revenue for this month
+        const monthlyTotalRevenue = monthData[year] || 0;
+        
+        // Calculate complement (total - I&O)
+        const monthlyComplement = Math.max(0, monthlyTotalRevenue - monthlyIORevenue);
+  
+        // Add monthly breakdown
+        cumulativeMonth[`${year}_io`] = monthlyIORevenue;
+        cumulativeMonth[`${year}_complement`] = monthlyComplement;
+  
+        // Sum all previous months' values for this year (cumulative)
         const cumulativeValue = bookingsData
           .slice(0, index + 1)
           .reduce((sum, prevMonth) => {
             return sum + (prevMonth[year] || 0);
           }, 0);
-
+  
         // Add cumulative value for this year
         cumulativeMonth[`${year}_cumulative`] = cumulativeValue;
-
-        // NEW: Create cumulative opportunities list for this year
-        // Collect all opportunities from all previous months up to and including current month
+  
+        // Create cumulative opportunities list for this year
         cumulativeMonth[`${year}Opps_cumulative`] = bookingsData
           .slice(0, index + 1)
           .flatMap((prevMonth) => prevMonth[`${year}Opps`] || []);
       });
-
+  
       return cumulativeMonth;
     });
+  
+    // Calculate cumulative I&O data for each year
+    years.forEach((year) => {
+      let cumulativeIO = 0;
+      
+      result.forEach((monthData, index) => {
+        // Get all opportunities up to this month for this year
+        const cumulativeOpps = bookingsData
+          .slice(0, index + 1)
+          .flatMap((prevMonth) => prevMonth[`${year}Opps`] || []);
+        
+        // Calculate cumulative I&O revenue
+        cumulativeIO = cumulativeOpps.reduce(
+          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+          0
+        );
+        
+        // Add cumulative I&O to the month data
+        monthData[`${year}_io_cumulative`] = cumulativeIO;
+      });
+    });
+  
+    // FONCTION POUR CALCULER LA COURBE D'OBJECTIF I&O - DÉPLACÉE ICI
+    const calculateIOTargetCurve = (cumulativeData, years) => {
+      const TARGET_IO_ANNUAL = 55000000; // 55M€
+      
+      // Trouve les données 2024 pour la référence
+      const data2024 = cumulativeData.map(month => month['2024_cumulative'] || 0);
+      const max2024 = Math.max(...data2024.filter(val => val > 0));
+      
+      // Si pas de données 2024, utilise une progression linéaire
+      if (max2024 === 0) {
+        return cumulativeData.map((month, index) => {
+          const progressRatio = (index + 1) / 12; // Progression linéaire sur 12 mois
+          return TARGET_IO_ANNUAL * progressRatio;
+        });
+      }
+      
+      // Calcule la courbe homothétique basée sur 2024
+      return cumulativeData.map(month => {
+        const ref2024 = month['2024_cumulative'] || 0;
+        if (ref2024 === 0) return 0;
+        
+        // Ratio homothétique : (valeur 2024 / max 2024) * objectif 55M
+        return (ref2024 / max2024) * TARGET_IO_ANNUAL;
+      });
+    };
+  
+    // AJOUTER LA COURBE D'OBJECTIF I&O AUX DONNÉES
+    const ioTargetCurve = calculateIOTargetCurve(result, years);
+    
+    result.forEach((month, index) => {
+      month.ioTarget = ioTargetCurve[index];
+    });
+  
+    return result;
   };
-
   const handleChartClick = (data) => {
     if (!data || !data.activePayload || data.activePayload.length === 0) return;
 
@@ -1210,215 +1283,336 @@ const BookingsTab = ({
   };
 
   // Custom tooltip for charts
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      // Group entries by year
-      const entriesByYear = {};
+// Custom tooltip complet pour le graphique
+// Custom tooltip avec affichage en colonnes 2024 | 2025
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    // Group entries by year
+    const entriesByYear = {};
 
-      // First pass: organize data by year
-      payload.forEach((entry) => {
-        // Defensive check for dataKey
-        const dataKey = String(entry.dataKey || "");
+    // Trouvez l'objectif I&O dans le payload
+    const ioTargetEntry = payload.find(entry => entry.dataKey === 'ioTarget');
 
-        // Parse year and type (regular or cumulative)
-        const isCumulative = dataKey.includes("_cumulative");
-        const year = dataKey.replace("_cumulative", "");
+    // First pass: organize data by year
+    payload.forEach((entry) => {
+      const dataKey = String(entry.dataKey || "");
 
-        // Skip entries that don't look like valid year data
-        if (!/^\d+(_cumulative)?$/.test(dataKey)) return;
+      // Skip the ioTarget entry as we handle it separately
+      if (dataKey === 'ioTarget') return;
 
-        // Initialize year entry if not exists
-        if (!entriesByYear[year]) {
-          entriesByYear[year] = {
-            year,
-            regular: null,
-            cumulative: null,
-            color: entry.color,
-            // These will be set later
-            oppCount: 0,
-            oppCountCumulative: 0,
-            ioValue: 0,
-            ioValueCumulative: 0,
-          };
-        }
+      // Parse year and type (I&O, complement, or cumulative)
+      const isCumulative = dataKey.includes("_cumulative");
+      const isIO = dataKey.includes("_io");
+      const isComplement = dataKey.includes("_complement");
+      
+      // Extract year from dataKey
+      let year;
+      if (isCumulative) {
+        year = dataKey.replace("_cumulative", "");
+      } else if (isIO) {
+        year = dataKey.replace("_io", "");
+      } else if (isComplement) {
+        year = dataKey.replace("_complement", "");
+      } else {
+        year = dataKey;
+      }
 
-        // Set value based on type
-        if (isCumulative) {
-          entriesByYear[year].cumulative = entry.value || 0;
-          entriesByYear[year].cumulativeColor = entry.color;
-        } else {
-          entriesByYear[year].regular = entry.value || 0;
-          entriesByYear[year].color = entry.color;
-        }
-      });
+      // Skip entries that don't look like valid year data
+      if (!/^\d+$/.test(year)) return;
 
-      // Second pass: add opportunities count and I&O values
-      Object.keys(entriesByYear).forEach((year) => {
-        // Get monthly opportunity list
-        const oppList = payload[0].payload[`${year}Opps`] || [];
-        entriesByYear[year].oppCount = oppList.length || 0;
+      // Initialize year entry if not exists
+      if (!entriesByYear[year]) {
+        entriesByYear[year] = {
+          year,
+          ioRevenue: 0,
+          complementRevenue: 0,
+          cumulative: null,
+          color: entry.color,
+          oppCount: 0,
+          oppCountCumulative: 0,
+          // Nouveaux champs pour le split cumulative
+          cumulativeIO: 0,
+          cumulativeComplement: 0,
+        };
+      }
 
-        // Calculate I&O value for monthly data directly from opportunities
-        entriesByYear[year].ioValue = oppList.reduce(
-          (sum, opp) =>
-            sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
+      // Set value based on type
+      if (isCumulative) {
+        entriesByYear[year].cumulative = entry.value || 0;
+        entriesByYear[year].cumulativeColor = entry.color;
+      } else if (isIO) {
+        entriesByYear[year].ioRevenue = entry.value || 0;
+        entriesByYear[year].color = entry.color;
+      } else if (isComplement) {
+        entriesByYear[year].complementRevenue = entry.value || 0;
+      }
+    });
+
+    // Second pass: add opportunities count, calculate totals, and cumulative I&O split
+    Object.keys(entriesByYear).forEach((year) => {
+      const yearEntry = entriesByYear[year];
+      
+      // Get monthly opportunity list
+      const oppList = payload[0].payload[`${year}Opps`] || [];
+      yearEntry.oppCount = oppList.length || 0;
+
+      // Get cumulative opportunity list
+      const cumulativeOppList = payload[0].payload[`${year}Opps_cumulative`] || [];
+      yearEntry.oppCountCumulative = cumulativeOppList.length || 0;
+
+      // Calculate cumulative I&O and complement split
+      if (cumulativeOppList.length > 0) {
+        // Calculate cumulative I&O from all opportunities up to this month
+        yearEntry.cumulativeIO = cumulativeOppList.reduce(
+          (sum, opp) => sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
           0
         );
+        
+        // Calculate cumulative complement (total - I&O)
+        yearEntry.cumulativeComplement = Math.max(0, yearEntry.cumulative - yearEntry.cumulativeIO);
+      }
+    });
 
-        // NEW: Get cumulative opportunity list
-        const cumulativeOppList =
-          payload[0].payload[`${year}Opps_cumulative`] || [];
-        entriesByYear[year].oppCountCumulative = cumulativeOppList.length || 0;
+    // Get sorted years and separate 2024/2025 data
+    const data2024 = entriesByYear['2024'] || null;
+    const data2025 = entriesByYear['2025'] || null;
 
-        // NEW: Calculate cumulative I&O directly from cumulative opportunity list
-        entriesByYear[year].ioValueCumulative = cumulativeOppList.reduce(
-          (sum, opp) =>
-            sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue),
-          0
-        );
-      });
+    return (
+      <Card
+        sx={{
+          p: 1,
+          backgroundColor: "white",
+          border: "1px solid",
+          borderColor: alpha(theme.palette.primary.main, 0.1),
+          boxShadow: theme.shadows[3],
+          borderRadius: 1,
+          minWidth: 380,
+          maxWidth: 380,
+          fontFamily: 'Calibri, sans-serif',
+        }}
+      >
+        <Typography variant="caption" fontWeight={600} mb={1} textAlign="center" sx={{ display: 'block', fontSize: '0.8rem', fontFamily: 'Calibri, sans-serif' }}>
+          {label}
+        </Typography>
 
-      // Get sorted years (ensuring 2024 before 2025)
-      const sortedYears = Object.keys(entriesByYear).sort();
+        {/* OBJECTIF I&O EN PREMIER */}
+        {ioTargetEntry && (
+          <Box sx={{ 
+            mb: 1, 
+            p: 0.5, 
+            backgroundColor: alpha(theme.palette.warning.main, 0.1), 
+            borderRadius: 0.5,
+            textAlign: 'center'
+          }}>
+            <Typography variant="caption" fontWeight={600} color="text.primary" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+              Objectif I&O: {new Intl.NumberFormat("fr-FR", {
+                style: "currency",
+                currency: "EUR",
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(ioTargetEntry.value)}
+            </Typography>
+          </Box>
+        )}
 
-      return (
-        <Card
-          sx={{
-            p: 1.5,
-            backgroundColor: "white",
-            border: "1px solid",
-            borderColor: alpha(theme.palette.primary.main, 0.1),
-            boxShadow: theme.shadows[3],
-            borderRadius: 2,
-            maxWidth: 300,
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight={600} mb={1}>
-            {label}
-          </Typography>
+        {/* EN-TÊTES DES COLONNES */}
+        <Grid container spacing={0.5} sx={{ mb: 0.5 }}>
+          <Grid item xs={6}>
+            <Typography variant="caption" fontWeight={700} textAlign="center" 
+                       sx={{ color: data2024 ? data2024.color : theme.palette.text.secondary, fontSize: '0.8rem', fontFamily: 'Calibri, sans-serif' }}>
+              2024
+            </Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="caption" fontWeight={700} textAlign="center"
+                       sx={{ color: data2025 ? data2025.color : theme.palette.text.secondary, fontSize: '0.8rem', fontFamily: 'Calibri, sans-serif' }}>
+              2025
+            </Typography>
+          </Grid>
+        </Grid>
 
-          {sortedYears.map((year) => {
-            const yearData = entriesByYear[year];
-            return (
-              <Box key={year} sx={{ mb: 1.5 }}>
-                {/* Year Header */}
-                <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
-                  Year {year}
-                </Typography>
+        <Divider sx={{ mb: 1 }} />
 
-                {/* Monthly Value */}
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
-                  <Box
-                    sx={{
-                      width: 10,
-                      height: 10,
-                      backgroundColor: yearData.color,
-                      borderRadius: "50%",
-                      mr: 1,
-                    }}
-                  />
-                  <Typography
-                    variant="body2"
-                    sx={{ mr: 1, fontSize: "0.825rem" }}
-                  >
-                    Monthly:
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    sx={{ fontSize: "0.825rem" }}
-                  >
+        {/* SECTION MENSUELLE */}
+        <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+          Mensuel
+        </Typography>
+        
+        <Grid container spacing={0.5} sx={{ mb: 1 }}>
+          {/* Colonne 2024 */}
+          <Grid item xs={6}>
+            <Box sx={{ 
+              p: 0.5, 
+              backgroundColor: alpha(data2024?.color || theme.palette.grey[500], 0.05),
+              borderRadius: 0.5,
+              border: `1px solid ${alpha(data2024?.color || theme.palette.grey[500], 0.2)}`
+            }}>
+              {data2024 ? (
+                <>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(yearData.regular || 0)}
-                    {yearData.oppCount > 0 && (
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        color="primary.main"
-                        sx={{ ml: 0.5 }}
-                      >
-                        (I&O:{" "}
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(yearData.ioValue)}
-                        )
-                      </Typography>
-                    )}
+                    }).format(data2024.ioRevenue + data2024.complementRevenue)}
                   </Typography>
-                </Box>
+                  
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                    I&O: {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(data2024.ioRevenue)} ({((data2024.ioRevenue / (data2024.ioRevenue + data2024.complementRevenue)) * 100).toFixed(0)}%)
+                  </Typography>
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                    {data2024.oppCount} opp.
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  -
+                </Typography>
+              )}
+            </Box>
+          </Grid>
 
-                {/* Cumulative Value */}
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
-                  <Box
-                    sx={{
-                      width: 10,
-                      height: 10,
-                      backgroundColor:
-                        yearData.cumulativeColor || yearData.color,
-                      borderRadius: "50%",
-                      mr: 1,
-                    }}
-                  />
-                  <Typography
-                    variant="body2"
-                    sx={{ mr: 1, fontSize: "0.825rem" }}
-                  >
-                    Cumulative:
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    sx={{ fontSize: "0.825rem" }}
-                  >
+          {/* Colonne 2025 */}
+          <Grid item xs={6}>
+            <Box sx={{ 
+              p: 0.5, 
+              backgroundColor: alpha(data2025?.color || theme.palette.grey[500], 0.05),
+              borderRadius: 0.5,
+              border: `1px solid ${alpha(data2025?.color || theme.palette.grey[500], 0.2)}`
+            }}>
+              {data2025 ? (
+                <>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(yearData.cumulative || 0)}
-                    {yearData.oppCountCumulative > 0 && (
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        color="primary.main"
-                        sx={{ ml: 0.5 }}
-                      >
-                        (I&O:{" "}
-                        {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(yearData.ioValueCumulative)}
-                        )
-                      </Typography>
-                    )}
+                    }).format(data2025.ioRevenue + data2025.complementRevenue)}
                   </Typography>
-                </Box>
-
-                {/* Opportunities Count */}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ pl: 3 }}
-                >
-                  {yearData.oppCountCumulative} total opportunities
+                  
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                    I&O: {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(data2025.ioRevenue)} ({((data2025.ioRevenue / (data2025.ioRevenue + data2025.complementRevenue)) * 100).toFixed(0)}%)
+                  </Typography>
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                    {data2025.oppCount} opp.
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  -
                 </Typography>
-              </Box>
-            );
-          })}
-        </Card>
-      );
-    }
-    return null;
-  };
+              )}
+            </Box>
+          </Grid>
+        </Grid>
+
+        <Divider sx={{ mb: 1 }} />
+
+        {/* SECTION CUMULATIVE */}
+        <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+          Cumulé
+        </Typography>
+        
+        <Grid container spacing={0.5}>
+          {/* Colonne 2024 Cumulé */}
+          <Grid item xs={6}>
+            <Box sx={{ 
+              p: 0.5, 
+              backgroundColor: alpha(data2024?.cumulativeColor || data2024?.color || theme.palette.grey[500], 0.05),
+              borderRadius: 0.5,
+              border: `1px dashed ${alpha(data2024?.cumulativeColor || data2024?.color || theme.palette.grey[500], 0.4)}`
+            }}>
+              {data2024 && data2024.cumulative !== null ? (
+                <>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                    {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(data2024.cumulative)}
+                  </Typography>
+                  
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                    I&O: {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(data2024.cumulativeIO)} ({data2024.cumulative > 0 ? ((data2024.cumulativeIO / data2024.cumulative) * 100).toFixed(0) : 0}%)
+                  </Typography>
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                    {data2024.oppCountCumulative} opp.
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  -
+                </Typography>
+              )}
+            </Box>
+          </Grid>
+
+          {/* Colonne 2025 Cumulé */}
+          <Grid item xs={6}>
+            <Box sx={{ 
+              p: 0.5, 
+              backgroundColor: alpha(data2025?.cumulativeColor || data2025?.color || theme.palette.grey[500], 0.05),
+              borderRadius: 0.5,
+              border: `1px dashed ${alpha(data2025?.cumulativeColor || data2025?.color || theme.palette.grey[500], 0.4)}`
+            }}>
+              {data2025 && data2025.cumulative !== null ? (
+                <>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                    {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(data2025.cumulative)}
+                  </Typography>
+                  
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                    I&O: {new Intl.NumberFormat("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(data2025.cumulativeIO)} ({data2025.cumulative > 0 ? ((data2025.cumulativeIO / data2025.cumulative) * 100).toFixed(0) : 0}%)
+                  </Typography>
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                    {data2025.oppCountCumulative} opp.
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  -
+                </Typography>
+              )}
+            </Box>
+          </Grid>
+        </Grid>
+      </Card>
+    );
+  }
+  return null;
+};
 
   // Add this useEffect to trigger the initial data processing and chart population
   useEffect(() => {
@@ -1444,6 +1638,8 @@ const BookingsTab = ({
       // Format data for YoY comparison
       const yoyData = formatYearOverYearData(monthly);
       setYoyBookings(yoyData);
+
+      
 
       // Calculate cumulative data
       const cumData = calculateCumulativeTotals(yoyData);
@@ -1975,85 +2171,124 @@ const BookingsTab = ({
               Click on bars or lines to see opportunities
             </Typography>
             <ResponsiveContainer width="100%" height="90%">
-              <ComposedChart
-                data={cumulativeData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
-                onClick={handleChartClick}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="monthName" axisLine={false} tickLine={false} />
+  <ComposedChart
+    data={cumulativeData}
+    margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+    onClick={handleChartClick}
+  >
+    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+    <XAxis dataKey="monthName" axisLine={false} tickLine={false} />
 
-                {/* Left Y-Axis for Monthly Values */}
-                <YAxis
-                  yAxisId="monthly"
-                  orientation="left"
-                  tickFormatter={(value) =>
-                    new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      notation: "compact",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(value)
-                  }
-                  axisLine={false}
-                  tickLine={false}
-                />
+    {/* Left Y-Axis for Monthly Values */}
+    <YAxis
+      yAxisId="monthly"
+      orientation="left"
+      tickFormatter={(value) =>
+        new Intl.NumberFormat("fr-FR", {
+          style: "currency",
+          currency: "EUR",
+          notation: "compact",
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(value)
+      }
+      axisLine={false}
+      tickLine={false}
+    />
 
-                {/* Right Y-Axis for Cumulative Values */}
-                <YAxis
-                  yAxisId="cumulative"
-                  orientation="right"
-                  tickFormatter={(value) =>
-                    new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      notation: "compact",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(value)
-                  }
-                  axisLine={false}
-                  tickLine={false}
-                />
+    {/* Right Y-Axis for Cumulative Values */}
+    <YAxis
+      yAxisId="cumulative"
+      orientation="right"
+      tickFormatter={(value) =>
+        new Intl.NumberFormat("fr-FR", {
+          style: "currency",
+          currency: "EUR",
+          notation: "compact",
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(value)
+      }
+      axisLine={false}
+      tickLine={false}
+    />
 
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
+    <Tooltip content={<CustomTooltip />} />
 
-                {/* Bars and Lines for each year */}
-                {years.map((year, index) => {
-                  const colorSet = COLORS[index % COLORS.length];
-                  return (
-                    <React.Fragment key={year}>
-                      {/* Monthly Bars */}
-                      <Bar
-                        yAxisId="monthly"
-                        dataKey={year}
-                        name={`${year} Monthly (${
-                          showNetRevenue ? "Net Revenue" : "Gross Revenue"
-                        })`}
-                        fill={colorSet.bar}
-                        fillOpacity={colorSet.opacity}
-                        stackId={`${year}-stack`}
-                      />
+    {/* Bars and Lines for each year */}
+    {years.map((year, index) => {
+      const colorSet = COLORS[index % COLORS.length];
+      return (
+        <React.Fragment key={year}>
+          {/* I&O Revenue Bar (Bottom) */}
+          <Bar
+            yAxisId="monthly"
+            dataKey={`${year}_io`}
+            name={index === 0 ? `${year} Revenue` : ""}
+            fill={colorSet.bar}
+            fillOpacity={0.9}
+            stackId={`${year}-stack`}
+          />
 
-                      {/* Cumulative Line */}
-                      <Line
-                        yAxisId="cumulative"
-                        type="monotone"
-                        dataKey={`${year}_cumulative`}
-                        name={`${year} Cumulative (${
-                          showNetRevenue ? "Net Revenue" : "Gross Revenue"
-                        })`}
-                        stroke={colorSet.line}
-                        strokeWidth={3}
-                        dot={false}
-                      />
-                    </React.Fragment>
-                  );
-                })}
-              </ComposedChart>
-            </ResponsiveContainer>
+          {/* Complement Revenue Bar (Top) */}
+          <Bar
+            yAxisId="monthly"
+            dataKey={`${year}_complement`}
+            name=""
+            fill={colorSet.bar}
+            fillOpacity={0.4}
+            stackId={`${year}-stack`}
+          />
+
+          {/* Cumulative Line */}
+          <Line
+            yAxisId="cumulative"
+            type="monotone"
+            dataKey={`${year}_cumulative`}
+            name={`${year} Cumulatif`}
+            stroke={colorSet.line}
+            strokeWidth={3}
+            dot={false}
+          />
+
+          {/* Cumulative I&O Line */}
+          <Line
+            yAxisId="cumulative"
+            type="monotone"
+            dataKey={`${year}_io_cumulative`}
+            name=""
+            stroke={colorSet.line}
+            strokeWidth={2}
+            strokeDasharray="4 4"
+            dot={{
+              fill: colorSet.line,
+              stroke: colorSet.line,
+              strokeWidth: 2,
+              r: 2
+            }}
+          />
+        </React.Fragment>
+      );
+    })}
+
+    {/* LIGNE D'OBJECTIF I&O - APRÈS LA BOUCLE DES ANNÉES */}
+    <Line
+      yAxisId="cumulative"
+      type="monotone"
+      dataKey="ioTarget"
+      name="2025 I&O Target"
+      stroke="#FF6B35"
+      strokeWidth={2}
+      strokeDasharray="8 8"
+      dot={{
+        fill: "#FF6B35",
+        stroke: "#FF6B35",
+        strokeWidth: 2,
+        r: 3
+      }}
+    />
+  </ComposedChart>
+</ResponsiveContainer>
           </Paper>
         </Grid>
 
