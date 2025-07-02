@@ -28,6 +28,7 @@ import InfoIcon from "@mui/icons-material/Info";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import FilterListOffIcon from "@mui/icons-material/FilterListOff";
+import CommentIcon from "@mui/icons-material/Comment";
 import MeetingMinutes from "./MeetingMinutes"; // Import the meeting minutes component
 import OpportunityActions from "./OpportunityActions"; // Import the actions component
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
@@ -93,7 +94,7 @@ const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
     return item[revenueField] || 0;
   }
 
-  // Check each service line (1, 2, and 3)
+  // Check each service line (1, 2 and 3)
   const serviceLines = [
     {
       line: item["Service Line 1"],
@@ -179,6 +180,11 @@ const exportOpportunities = (
         (opp["Status"] && statusText[opp["Status"]]) ||
         `Status ${opp["Status"] || "Unknown"}`
       }\n\n`;
+
+      // Add Lost Comment if this is a lost opportunity and comment exists
+      if (opp["Status"] === 15 && opp["Lost Comment"]) {
+        markdownContent += `**Lost Comment**: ${opp["Lost Comment"]}\n\n`;
+      }
 
       // Financial Details
       markdownContent += `#### Financial Details\n\n`;
@@ -411,6 +417,7 @@ const exportOpportunities = (
   element.click();
   document.body.removeChild(element);
 };
+
 // Row component with expandable details
 const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
   const [open, setOpen] = useState(false);
@@ -505,6 +512,16 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
               boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.1)}`,
             }}
           />
+          {/* Add comment indicator for lost opportunities */}
+          {row["Status"] === 15 && row["Lost Comment"] && (
+            <Tooltip title={`Lost Comment: ${row["Lost Comment"]}`}>
+              <CommentIcon
+                fontSize="small"
+                color="error"
+                sx={{ ml: 0.5, verticalAlign: "middle" }}
+              />
+            </Tooltip>
+          )}
         </TableCell>
         <TableCell
           align="right"
@@ -661,13 +678,57 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
                   }}
                 >
                   <Box>
-                    <Typography
-                      variant="h6"
-                      color="primary.main"
-                      fontWeight={700}
-                    >
-                      {row["Opportunity"]}
-                    </Typography>
+                    {row["CRM Link"] ? (
+                      <Typography
+                        variant="h6"
+                        color="primary.main"
+                        fontWeight={700}
+                        component="a"
+                        href={row["CRM Link"]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          textDecoration: "none",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            textDecoration: "underline",
+                            color: theme.palette.primary.dark,
+                            transform: "translateX(2px)",
+                          },
+                          "&:active": {
+                            transform: "translateX(1px)",
+                          },
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {row["Opportunity"]}
+                        <Box
+                          component="span"
+                          sx={{
+                            ml: 1,
+                            fontSize: "0.8rem",
+                            opacity: 0.7,
+                            transition: "opacity 0.2s ease",
+                            "&:hover": {
+                              opacity: 1,
+                            },
+                          }}
+                        >
+                          🔗
+                        </Box>
+                      </Typography>
+                    ) : (
+                      <Typography
+                        variant="h6"
+                        color="primary.main"
+                        fontWeight={700}
+                      >
+                        {row["Opportunity"]}
+                      </Typography>
+                    )}
                     {isSAPProject(row) && (
                       <Chip
                         label="SAP"
@@ -715,9 +776,55 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
                         borderRadius: "8px",
                       }}
                     />
-                    {/* Export buttons here */}
                   </Box>
                 </Box>
+
+                {/* Lost Comment Section - Only for lost opportunities */}
+                {row["Status"] === 15 && row["Lost Comment"] && (
+                  <Box
+                    sx={{
+                      p: 2.5,
+                      bgcolor: alpha(theme.palette.error.main, 0.04),
+                      borderBottom: `1px solid ${alpha(
+                        theme.palette.error.main,
+                        0.1
+                      )}`,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        mb: 1,
+                      }}
+                    >
+                      <CommentIcon
+                        color="error"
+                        sx={{ mr: 1, mt: 0.5, fontSize: 20 }}
+                      />
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight={600}
+                        color="error.main"
+                      >
+                        Lost Comment
+                      </Typography>
+                    </Box>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        ml: 3,
+                        p: 1.5,
+                        bgcolor: alpha(theme.palette.error.main, 0.08),
+                        borderRadius: 1,
+                        borderLeft: `3px solid ${theme.palette.error.main}`,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      "{row["Lost Comment"]}"
+                    </Typography>
+                  </Box>
+                )}
 
                 {/* Total Opportunity Amount - Improved Allocation Display */}
                 <Box
