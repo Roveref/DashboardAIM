@@ -24,10 +24,6 @@ jobs:
           lfs: false
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
-      - name: Install latest dependencies
-        run: |
-          npm install @actions/core@latest @actions/http-client@latest
-          npm audit fix --force
       - name: Get Id Token
         uses: actions/github-script@v6
         id: idtoken
