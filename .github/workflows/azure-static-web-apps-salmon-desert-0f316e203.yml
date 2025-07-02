@@ -24,7 +24,7 @@ jobs:
           lfs: false
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
-      - name: Install latest dependenciesAdd commentMore actions
+      - name: Install latest dependencies
         run: |
           npm install @actions/core@latest @actions/http-client@latest
           npm audit fix --force
