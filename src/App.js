@@ -1168,7 +1168,7 @@ function App() {
                     gutterBottom
                     sx={{ fontWeight: 700, mb: 2 }}
                   >
-                    Welcome to the I&O Team Dashboard
+                    Welcome to the BearingPoint Dashboard
                   </Typography>
 
                   <Typography
