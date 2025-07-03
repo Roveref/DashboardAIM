@@ -909,7 +909,7 @@ function App() {
                     fontWeight: 500,
                   }}
                 >
-                  I&O Team Dashboard
+                  BearingPoint Dashboard
                 </Typography>
               </Box>
 
