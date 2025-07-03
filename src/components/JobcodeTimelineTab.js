@@ -218,8 +218,8 @@ const JobcodeTimelineTab = ({
       });
 
       // Add status changes if available
-      if (opp["Last Status Change Date"]) {
-        const statusDate = new Date(opp["Last Status Change Date"]);
+      if (opp["Booking/Lost Date"]) {
+        const statusDate = new Date(opp["Booking/Lost Date"]);
         years.add(statusDate.getFullYear());
         months.add(`${statusDate.getFullYear()}-${statusDate.getMonth()}`);
 
