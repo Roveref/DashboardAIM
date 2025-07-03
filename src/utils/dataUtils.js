@@ -200,7 +200,7 @@ export const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) =
   }
 
   // If no specific Operations allocation, return full revenue
-  return baseRevenue;
+  return 0;
 };
 
 /**
