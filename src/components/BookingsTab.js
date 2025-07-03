@@ -107,7 +107,7 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
     // Apply date range filter if available
     if (dateRange && dateRange[0] && dateRange[1]) {
       bookedOpportunities = bookedOpportunities.filter((item) => {
-        const statusDate = new Date(item["Last Status Change Date"]);
+        const statusDate = new Date(item["Booking/Lost Date"]);
         return statusDate >= dateRange[0] && statusDate <= dateRange[1];
       });
     }
@@ -192,7 +192,7 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
 
       // Track latest booking date
       const bookingDate = new Date(
-        opportunity["Last Status Change Date"] ||
+        opportunity["Booking/Lost Date"] ||
           opportunity["Winning Date"] ||
           opportunity["Creation Date"]
       );
@@ -1109,7 +1109,7 @@ const BookingsTab = ({
     },
   ];
 
-  // Update date analysis method to use Last Status Change Date
+  // Update date analysis method to use Booking/Lost Date
   const updateDateAnalysis = () => {
     if (!data) return;
 
@@ -1119,15 +1119,15 @@ const BookingsTab = ({
     // Get new bookings and losses within the date range
     const wins = data.filter((item) => {
       if (item["Status"] !== 14) return false;
-      if (!item["Last Status Change Date"]) return false;
-      const statusDate = new Date(item["Last Status Change Date"]);
+      if (!item["Booking/Lost Date"]) return false;
+      const statusDate = new Date(item["Booking/Lost Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
 
     const losses = data.filter((item) => {
       if (item["Status"] !== 15) return false;
-      if (!item["Last Status Change Date"]) return false;
-      const statusDate = new Date(item["Last Status Change Date"]);
+      if (!item["Booking/Lost Date"]) return false;
+      const statusDate = new Date(item["Booking/Lost Date"]);
       return statusDate >= startDate && statusDate <= endDate;
     });
 
@@ -1261,7 +1261,7 @@ const BookingsTab = ({
     const opps = (clickedItem[`${year}Opps`] || []).filter(
       (opp) =>
         opp["Status"] === 14 && // Booked opportunities
-        new Date(opp["Last Status Change Date"]).getFullYear() === 2025
+        new Date(opp["Booking/Lost Date"]).getFullYear() === 2025
     );
 
     if (opps.length > 0) {
@@ -1628,7 +1628,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
       const monthly = getMonthlyYearlyTotals(
         bookedData,
-        "Last Status Change Date",
+        "Booking/Lost Date",
         showNetRevenue ? "Net Revenue" : "Gross Revenue"
       );
 
@@ -1671,7 +1671,7 @@ const CustomTooltip = ({ active, payload, label }) => {
     const bookedData = data.filter((item) => item["Status"] === 14);
     const monthly = getMonthlyYearlyTotals(
       bookedData,
-      "Last Status Change Date",
+      "Booking/Lost Date",
       showNetRevenue ? "Net Revenue" : "Gross Revenue"
     );
 
@@ -1724,15 +1724,15 @@ const CustomTooltip = ({ active, payload, label }) => {
   const bookings2025 = data.filter(
     (item) =>
       item["Status"] === 14 &&
-      item["Last Status Change Date"] &&
-      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+      item["Booking/Lost Date"] &&
+      new Date(item["Booking/Lost Date"]).getFullYear() === 2025
   );
 
   const losses2025 = data.filter(
     (item) =>
       item["Status"] === 15 &&
-      item["Last Status Change Date"] &&
-      new Date(item["Last Status Change Date"]).getFullYear() === 2025
+      item["Booking/Lost Date"] &&
+      new Date(item["Booking/Lost Date"]).getFullYear() === 2025
   );
 
   // Calculate revenues with new logic
@@ -1872,7 +1872,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                               (item) =>
                                 item["Status"] === 14 &&
                                 new Date(
-                                  item["Last Status Change Date"]
+                                  item["Booking/Lost Date"]
                                 ).getFullYear() === 2025
                             ).length) *
                             100
@@ -1970,7 +1970,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                               (item) =>
                                 item["Status"] === 15 &&
                                 new Date(
-                                  item["Last Status Change Date"]
+                                  item["Booking/Lost Date"]
                                 ).getFullYear() === 2025
                             ).length) *
                             100
@@ -2136,7 +2136,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                               (item) =>
                                 item["Status"] === 14 &&
                                 new Date(
-                                  item["Last Status Change Date"]
+                                  item["Booking/Lost Date"]
                                 ).getFullYear() === 2025
                             ).length) *
                             100
