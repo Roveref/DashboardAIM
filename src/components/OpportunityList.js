@@ -339,9 +339,9 @@ const exportOpportunities = (
           ? new Date(opp["Creation Date"]).toLocaleDateString("fr-FR")
           : "N/A"
       }\n`;
-      markdownContent += `- **Last Status Change**: ${
-        opp["Last Status Change Date"]
-          ? new Date(opp["Last Status Change Date"]).toLocaleDateString("fr-FR")
+      markdownContent += `- **Booking/Lost**: ${
+        opp["Booking/Lost Date"]
+          ? new Date(opp["Booking/Lost Date"]).toLocaleDateString("fr-FR")
           : "N/A"
       }\n\n`;
 
@@ -987,7 +987,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
                       <Grid container spacing={2}>
                         <Grid item xs={6}>
                           <Typography variant="caption" color="text.secondary">
-                            Last Status Change
+                            Booking/Lost
                           </Typography>
                           <Typography
                             variant="body2"
@@ -995,7 +995,7 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
                             sx={{ mb: 2 }}
                           >
                             {new Date(
-                              row["Last Status Change Date"]
+                              row["Booking/Lost Date"]
                             ).toLocaleDateString("fr-FR")}
                           </Typography>
 
