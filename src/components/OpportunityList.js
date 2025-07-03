@@ -124,7 +124,7 @@ const calculateRevenueWithSegmentLogic = (item, showNetRevenue = false) => {
   }
 
   // If no specific Operations allocation, return full revenue
-  return item[revenueField] || 0;
+  return 0;
 };
 
 const exportOpportunities = (
