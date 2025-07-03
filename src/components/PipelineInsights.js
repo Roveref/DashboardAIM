@@ -139,7 +139,7 @@ const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType, 
       // Status changes this month
       // Recent moves to Status 6 (Proposal Delivered)
       const recentStatus6 = opportunityData.filter((opp) => {
-        const statusDate = new Date(opp["Last Status Change Date"]);
+        const statusDate = new Date(opp["Booking/Lost Date"]);
         return (
           statusDate >= startOfCurrentMonth &&
           statusDate <= currentDate &&
@@ -149,7 +149,7 @@ const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType, 
 
       // Previous month Status 6 moves
       const previousStatus6 = opportunityData.filter((opp) => {
-        const statusDate = new Date(opp["Last Status Change Date"]);
+        const statusDate = new Date(opp["Booking/Lost Date"]);
         return (
           statusDate >= startOfPreviousMonth &&
           statusDate <= endOfPreviousMonth &&
@@ -167,7 +167,7 @@ const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType, 
 
       // Recent moves to Status 11 (Final Negotiation)
       const recentStatus11 = opportunityData.filter((opp) => {
-        const statusDate = new Date(opp["Last Status Change Date"]);
+        const statusDate = new Date(opp["Booking/Lost Date"]);
         return (
           statusDate >= startOfCurrentMonth &&
           statusDate <= currentDate &&
@@ -177,7 +177,7 @@ const PipelineInsights = ({ data, isFiltered, onFilterChange, activeFilterType, 
 
       // Previous month Status 11 moves
       const previousStatus11 = opportunityData.filter((opp) => {
-        const statusDate = new Date(opp["Last Status Change Date"]);
+        const statusDate = new Date(opp["Booking/Lost Date"]);
         return (
           statusDate >= startOfPreviousMonth &&
           statusDate <= endOfPreviousMonth &&
