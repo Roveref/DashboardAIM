@@ -60,6 +60,7 @@ function App() {
     status: [],
     manager: [],
     partner: [],
+    technologyPartners: [],
   });
   const [loading, setLoading] = useState(false);
   const [selectedOpportunities, setSelectedOpportunities] = useState([]);
@@ -263,6 +264,24 @@ function App() {
       result = result.filter((item) =>
         safeFilters.partner.includes(item["Partner"])
       );
+    }
+
+    if (safeFilters.technologyPartners?.length > 0) {
+    result = result.filter((item) => {
+      // Check if the opportunity has any of the selected technology partners
+      // in any of the three technology partner columns
+      const techPartner1 = item["Technology Partner 1"];
+      const techPartner2 = item["Technology Partner 2"];
+      const techPartner3 = item["Technology Partner 3"];
+      
+      return safeFilters.technologyPartners.some(selectedPartner => {
+        return (
+          (techPartner1 && techPartner1.includes(selectedPartner)) ||
+          (techPartner2 && techPartner2.includes(selectedPartner)) ||
+          (techPartner3 && techPartner3.includes(selectedPartner))
+        );
+      });
+    });
     }
 
     // Handle service line filtering and allocation separately
