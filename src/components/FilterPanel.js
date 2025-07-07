@@ -161,7 +161,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
 
       <Grid container spacing={3}>
         {/* Account Filter */}
-        <Grid item xs={12}>
+        <Grid item xs={12} md={6}>
           <Autocomplete
             multiple
             id="account-filter"
@@ -192,7 +192,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
         </Grid>
 
         {/* Technology Partners Filter */}
-        <Grid item xs={12}>
+        <Grid item xs={12} md={6}>
           <Autocomplete
             multiple
             id="technology-partner-filter"
@@ -206,8 +206,6 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
                   label={option}
                   {...getTagProps({ index })}
                   size="small"
-                  color="info"
-                  variant="outlined"
                 />
               ))
             }
@@ -220,17 +218,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
                 fullWidth
               />
             )}
-            renderOption={(props, option) => (
-              <Box component="li" {...props}>
-                <Checkbox
-                  checked={(filters.technologyPartners || []).indexOf(option) > -1}
-                  style={{ marginRight: 8 }}
-                />
-                <ListItemText primary={option} />
-              </Box>
-            )}
             filterSelectedOptions
-            disableCloseOnSelect
           />
         </Grid>
 
