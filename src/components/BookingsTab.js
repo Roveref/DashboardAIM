@@ -2011,6 +2011,29 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
               maximumFractionDigits: 0,
             }).format(losses2025TotalRevenue)}
           </Typography>
+          {/* FIXED: Use calculateRevenueWithSegmentLogic like in bookings card */}
+          <Typography 
+            variant="body2" 
+            color="primary.main"
+            sx={{ mt: 0.5 }}
+          >
+            (I&O: {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(
+              losses2025.reduce(
+                (sum, item) =>
+                  sum +
+                  calculateRevenueWithSegmentLogic(
+                    item,
+                    showNetRevenue
+                  ),
+                0
+              )
+            )})
+          </Typography>
         </Box>
 
         {/* Center arrow with percentage - only when allocation is active */}
