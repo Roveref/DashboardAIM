@@ -1836,7 +1836,7 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
         </Typography>
         
         {/* Show allocated amount if filtering is applied */}
-        {hasAllocation && Math.abs(bookings2025AllocatedRevenue - bookings2025TotalRevenue) > 1 && (
+        {hasAllocation && (
           <Typography
             variant="body2"
             color="secondary.main"
@@ -1964,7 +1964,7 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
         </Typography>
         
         {/* Show allocated amount if filtering is applied */}
-        {hasAllocation && Math.abs(losses2025AllocatedRevenue - losses2025TotalRevenue) > 1 && (
+        {hasAllocation && (
           <Typography
             variant="body2"
             color="secondary.main"
@@ -2066,7 +2066,7 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
         </Typography>
         
         {/* Show allocated average if filtering is applied */}
-        {hasAllocation && Math.abs(averageBookingSize2025Allocated - averageBookingSize2025Total) > 1 && (
+        {hasAllocation && (
           <Typography
             variant="body2"
             color="info.main"
