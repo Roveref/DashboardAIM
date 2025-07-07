@@ -1812,71 +1812,114 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
       </Typography>
     </Box>
 
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        mb: 2,
-      }}
-    >
-      <Box>
-        <Typography
-          variant="h5"
-          color="primary.main"
-          fontWeight={700}
-          sx={{ mb: 0.5 }}
-        >
-          {new Intl.NumberFormat("fr-FR", {
-            style: "currency",
-            currency: "EUR",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(bookings2025TotalRevenue)}
-        </Typography>
-        
-        {/* Show allocated amount if filtering is applied */}
-        {hasAllocation && (
+    <Box sx={{ mt: 3, mb: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          position: "relative",
+        }}
+      >
+        {/* Total Bookings */}
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Total Bookings Value
+          </Typography>
           <Typography
-            variant="body2"
-            color="secondary.main"
-            fontWeight={600}
-            sx={{ mt: 0.5 }}
+            variant="h4"
+            component="div"
+            fontWeight={700}
+            color="text.primary"
           >
-            Filtered: {new Intl.NumberFormat("fr-FR", {
+            {new Intl.NumberFormat("fr-FR", {
               style: "currency",
               currency: "EUR",
               minimumFractionDigits: 0,
               maximumFractionDigits: 0,
-            }).format(bookings2025AllocatedRevenue)}
+            }).format(bookings2025TotalRevenue)}
           </Typography>
+          <Typography 
+            variant="body2" 
+            color="primary.main"
+            sx={{ mt: 0.5 }}
+          >
+            (I&O: {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(
+              bookings2025.reduce(
+                (sum, item) =>
+                  sum +
+                  calculateRevenueWithSegmentLogic(
+                    item,
+                    showNetRevenue
+                  ),
+                0
+              )
+            )})
+          </Typography>
+        </Box>
+
+        {/* Center arrow with percentage - only when allocation is active */}
+        {hasAllocation && (
+          <Box
+            sx={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              px: 1,
+              py: 0.5,
+              borderRadius: 4,
+              bgcolor: alpha(theme.palette.secondary.main, 0.1),
+              zIndex: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="secondary.main"
+              fontWeight={600}
+              sx={{ mb: 0.5 }}
+            >
+              {bookings2025TotalRevenue > 0
+                ? `${((bookings2025AllocatedRevenue / bookings2025TotalRevenue) * 100).toFixed(0)}%`
+                : "0%"}
+            </Typography>
+            <ArrowRightAltIcon color="secondary" fontSize="small" />
+          </Box>
         )}
 
-        <Typography
-          component="span"
-          variant="caption"
-          color="primary.dark"
-          sx={{ ml: 1 }}
-        >
-          (I&O:{" "}
-          {new Intl.NumberFormat("fr-FR", {
-            style: "currency",
-            currency: "EUR",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(
-            bookings2025.reduce(
-              (sum, item) =>
-                sum +
-                calculateRevenueWithSegmentLogic(
-                  item,
-                  showNetRevenue
-                ),
-              0
-            )
-          )}
-          )
-        </Typography>
+        {/* Filtered Bookings - only when allocation is active */}
+        {hasAllocation && (
+          <Box sx={{ flex: 1, textAlign: "right" }}>
+            <Typography
+              variant="body2"
+              color="secondary.main"
+              gutterBottom
+            >
+              Filtered Bookings Value
+            </Typography>
+            <Typography
+              variant="h4"
+              component="div"
+              color="secondary.main"
+              fontWeight={700}
+            >
+              {new Intl.NumberFormat("fr-FR", {
+                style: "currency",
+                currency: "EUR",
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(bookings2025AllocatedRevenue)}
+            </Typography>
+          </Box>
+        )}
       </Box>
     </Box>
 
@@ -1940,44 +1983,91 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
       </Typography>
     </Box>
 
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        mb: 2,
-      }}
-    >
-      <Box>
-        <Typography
-          variant="h5"
-          color="error.main"
-          fontWeight={700}
-          sx={{ mb: 0.5 }}
-        >
-          {new Intl.NumberFormat("fr-FR", {
-            style: "currency",
-            currency: "EUR",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(losses2025TotalRevenue)}
-        </Typography>
-        
-        {/* Show allocated amount if filtering is applied */}
-        {hasAllocation && (
+    <Box sx={{ mt: 3, mb: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          position: "relative",
+        }}
+      >
+        {/* Total Lost */}
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Total Lost Value
+          </Typography>
           <Typography
-            variant="body2"
-            color="secondary.main"
-            fontWeight={600}
-            sx={{ mt: 0.5 }}
+            variant="h4"
+            component="div"
+            fontWeight={700}
+            color="text.primary"
           >
-            Filtered: {new Intl.NumberFormat("fr-FR", {
+            {new Intl.NumberFormat("fr-FR", {
               style: "currency",
               currency: "EUR",
               minimumFractionDigits: 0,
               maximumFractionDigits: 0,
-            }).format(losses2025AllocatedRevenue)}
+            }).format(losses2025TotalRevenue)}
           </Typography>
+        </Box>
+
+        {/* Center arrow with percentage - only when allocation is active */}
+        {hasAllocation && (
+          <Box
+            sx={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              px: 1,
+              py: 0.5,
+              borderRadius: 4,
+              bgcolor: alpha(theme.palette.secondary.main, 0.1),
+              zIndex: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="secondary.main"
+              fontWeight={600}
+              sx={{ mb: 0.5 }}
+            >
+              {losses2025TotalRevenue > 0
+                ? `${((losses2025AllocatedRevenue / losses2025TotalRevenue) * 100).toFixed(0)}%`
+                : "0%"}
+            </Typography>
+            <ArrowRightAltIcon color="secondary" fontSize="small" />
+          </Box>
+        )}
+
+        {/* Filtered Lost - only when allocation is active */}
+        {hasAllocation && (
+          <Box sx={{ flex: 1, textAlign: "right" }}>
+            <Typography
+              variant="body2"
+              color="secondary.main"
+              gutterBottom
+            >
+              Filtered Lost Value
+            </Typography>
+            <Typography
+              variant="h4"
+              component="div"
+              color="secondary.main"
+              fontWeight={700}
+            >
+              {new Intl.NumberFormat("fr-FR", {
+                style: "currency",
+                currency: "EUR",
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(losses2025AllocatedRevenue)}
+            </Typography>
+          </Box>
         )}
       </Box>
     </Box>
@@ -2042,73 +2132,116 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
       </Typography>
     </Box>
 
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        mb: 2,
-      }}
-    >
-      <Box>
-        <Typography
-          variant="h5"
-          color="secondary.main"
-          fontWeight={700}
-          sx={{ mb: 0.5 }}
-        >
-          {new Intl.NumberFormat("fr-FR", {
-            style: "currency",
-            currency: "EUR",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(averageBookingSize2025Total)}
-        </Typography>
-        
-        {/* Show allocated average if filtering is applied */}
-        {hasAllocation && (
+    <Box sx={{ mt: 3, mb: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          position: "relative",
+        }}
+      >
+        {/* Total Average */}
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Average Booking Size
+          </Typography>
           <Typography
-            variant="body2"
-            color="info.main"
-            fontWeight={600}
-            sx={{ mt: 0.5 }}
+            variant="h4"
+            component="div"
+            fontWeight={700}
+            color="text.primary"
           >
-            Filtered Avg: {new Intl.NumberFormat("fr-FR", {
+            {new Intl.NumberFormat("fr-FR", {
               style: "currency",
               currency: "EUR",
               minimumFractionDigits: 0,
               maximumFractionDigits: 0,
-            }).format(averageBookingSize2025Allocated)}
+            }).format(averageBookingSize2025Total)}
           </Typography>
+          <Typography 
+            variant="body2" 
+            color="primary.main"
+            sx={{ mt: 0.5 }}
+          >
+            (I&O: {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(
+              bookings2025.length > 0
+                ? bookings2025.reduce(
+                    (sum, item) =>
+                      sum +
+                      calculateRevenueWithSegmentLogic(
+                        item,
+                        showNetRevenue
+                      ),
+                    0
+                  ) / bookings2025.length
+                : 0
+            )})
+          </Typography>
+        </Box>
+
+        {/* Center arrow with percentage - only when allocation is active */}
+        {hasAllocation && (
+          <Box
+            sx={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              px: 1,
+              py: 0.5,
+              borderRadius: 4,
+              bgcolor: alpha(theme.palette.secondary.main, 0.1),
+              zIndex: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="secondary.main"
+              fontWeight={600}
+              sx={{ mb: 0.5 }}
+            >
+              {averageBookingSize2025Total > 0
+                ? `${((averageBookingSize2025Allocated / averageBookingSize2025Total) * 100).toFixed(0)}%`
+                : "0%"}
+            </Typography>
+            <ArrowRightAltIcon color="secondary" fontSize="small" />
+          </Box>
         )}
 
-        <Typography
-          component="span"
-          variant="caption"
-          color="primary.main"
-          sx={{ ml: 1 }}
-        >
-          (I&O:{" "}
-          {new Intl.NumberFormat("fr-FR", {
-            style: "currency",
-            currency: "EUR",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(
-            bookings2025.length > 0
-              ? bookings2025.reduce(
-                  (sum, item) =>
-                    sum +
-                    calculateRevenueWithSegmentLogic(
-                      item,
-                      showNetRevenue
-                    ),
-                  0
-                ) / bookings2025.length
-              : 0
-          )}
-          )
-        </Typography>
+        {/* Filtered Average - only when allocation is active */}
+        {hasAllocation && (
+          <Box sx={{ flex: 1, textAlign: "right" }}>
+            <Typography
+              variant="body2"
+              color="secondary.main"
+              gutterBottom
+            >
+              Filtered Average
+            </Typography>
+            <Typography
+              variant="h4"
+              component="div"
+              color="secondary.main"
+              fontWeight={700}
+            >
+              {new Intl.NumberFormat("fr-FR", {
+                style: "currency",
+                currency: "EUR",
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(averageBookingSize2025Allocated)}
+            </Typography>
+          </Box>
+        )}
       </Box>
     </Box>
 
