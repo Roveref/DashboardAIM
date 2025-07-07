@@ -33,11 +33,32 @@ const MenuProps = {
   },
 };
 
+// Function to get all unique technology partners from the three columns
+const getTechnologyPartners = (data) => {
+  const partners = new Set();
+  
+  data.forEach(item => {
+    // Check all three technology partner columns
+    [
+      item["Technology Partner 1"],
+      item["Technology Partner 2"], 
+      item["Technology Partner 3"]
+    ].forEach(partner => {
+      if (partner && partner !== "-" && partner.trim() !== "") {
+        partners.add(partner.trim());
+      }
+    });
+  });
+  
+  return Array.from(partners).sort();
+};
+
 const FilterPanel = ({ data, filters, onFilterChange }) => {
   const [filterOptions, setFilterOptions] = useState({
     manager: [],
     partner: [],
     accounts: [],
+    technologyPartners: [],
   });
 
   const theme = useTheme();
@@ -49,6 +70,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
         manager: getUniqueValues(data, "Manager"),
         partner: getUniqueValues(data, "Partner"),
         accounts: getUniqueValues(data, "Account"),
+        technologyPartners: getTechnologyPartners(data),
       });
     }
   }, [data]);
@@ -62,11 +84,16 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
     onFilterChange({ accounts: newValue || [] });
   };
 
+  const handleTechnologyPartnerChange = (event, newValue) => {
+    onFilterChange({ technologyPartners: newValue || [] });
+  };
+
   const handleClearFilters = () => {
     onFilterChange({
       accounts: [],
       manager: [],
       partner: [],
+      technologyPartners: [],
     });
   };
 
@@ -75,6 +102,7 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
     if (filters.accounts && filters.accounts.length > 0) count++;
     if (filters.manager && filters.manager.length > 0) count++;
     if (filters.partner && filters.partner.length > 0) count++;
+    if (filters.technologyPartners && filters.technologyPartners.length > 0) count++;
     return count;
   };
 
@@ -160,6 +188,49 @@ const FilterPanel = ({ data, filters, onFilterChange }) => {
               />
             )}
             filterSelectedOptions
+          />
+        </Grid>
+
+        {/* Technology Partners Filter */}
+        <Grid item xs={12}>
+          <Autocomplete
+            multiple
+            id="technology-partner-filter"
+            options={filterOptions.technologyPartners || []}
+            value={filters.technologyPartners || []}
+            onChange={handleTechnologyPartnerChange}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip
+                  key={option}
+                  label={option}
+                  {...getTagProps({ index })}
+                  size="small"
+                  color="info"
+                  variant="outlined"
+                />
+              ))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Technology Partners"
+                variant="outlined"
+                placeholder="Select technology partners"
+                fullWidth
+              />
+            )}
+            renderOption={(props, option) => (
+              <Box component="li" {...props}>
+                <Checkbox
+                  checked={(filters.technologyPartners || []).indexOf(option) > -1}
+                  style={{ marginRight: 8 }}
+                />
+                <ListItemText primary={option} />
+              </Box>
+            )}
+            filterSelectedOptions
+            disableCloseOnSelect
           />
         </Grid>
 
