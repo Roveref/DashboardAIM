@@ -56,6 +56,7 @@ function App() {
     subSegmentCodes: [],
     subSegments: [],
     serviceLine1: [],
+    serviceOfferings: [], // New filter for service offerings
     accounts: [],
     status: [],
     manager: [],
@@ -83,14 +84,21 @@ function App() {
     subSegmentCodes: [],
     subSegments: [],
     serviceLine1: [],
+    serviceOfferings: [], // New filter options for service offerings
     accounts: [],
   });
 
   // Store the mapping of segment codes to sub segments
   const [segmentToSubSegmentMap, setSegmentToSubSegmentMap] = useState({});
 
+  // Store the mapping of service lines to service offerings
+  const [serviceToOfferingMap, setServiceToOfferingMap] = useState({});
+
   // Filtered sub segments based on selected segment codes
   const [filteredSubSegments, setFilteredSubSegments] = useState([]);
+
+  // Filtered service offerings based on selected service lines
+  const [filteredServiceOfferings, setFilteredServiceOfferings] = useState([]);
 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -149,6 +157,34 @@ function App() {
 
         setSegmentToSubSegmentMap(segmentMapping);
 
+        // Create mapping of service lines to service offerings
+        const serviceMapping = {};
+
+        safeProcessedData.forEach((item) => {
+          // Check all three service line positions
+          const serviceLines = [
+            { line: item?.["Service Line 1"], offering: item?.["Service Offering 1"] },
+            { line: item?.["Service Line 2"], offering: item?.["Service Offering 2"] },
+            { line: item?.["Service Line 3"], offering: item?.["Service Offering 3"] },
+          ];
+
+          serviceLines.forEach(({ line, offering }) => {
+            if (line && offering && offering !== "-") {
+              if (!serviceMapping[line]) {
+                serviceMapping[line] = new Set();
+              }
+              serviceMapping[line].add(offering);
+            }
+          });
+        });
+
+        // Convert sets to arrays
+        Object.keys(serviceMapping).forEach((key) => {
+          serviceMapping[key] = Array.from(serviceMapping[key]);
+        });
+
+        setServiceToOfferingMap(serviceMapping);
+
         // Set filter options with proper error checking
         setFilterOptions({
           subSegmentCodes: getUniqueValues(
@@ -157,6 +193,7 @@ function App() {
           ),
           subSegments: getUniqueValues(safeProcessedData, "Sub Segment"),
           serviceLine1: getUniqueValues(safeProcessedData, "Service Line 1"),
+          serviceOfferings: getUniqueServiceOfferings(safeProcessedData),
           accounts: getUniqueValues(safeProcessedData, "Account"),
         });
 
@@ -178,6 +215,26 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to get all unique service offerings
+  const getUniqueServiceOfferings = (data) => {
+    const offerings = new Set();
+    
+    data.forEach(item => {
+      // Check all three service offering columns
+      [
+        item?.["Service Offering 1"],
+        item?.["Service Offering 2"],
+        item?.["Service Offering 3"]
+      ].forEach(offering => {
+        if (offering && offering !== "-" && offering.trim() !== "") {
+          offerings.add(offering.trim());
+        }
+      });
+    });
+    
+    return Array.from(offerings).sort();
   };
 
   // Update filtered sub segments when segment codes change
@@ -214,6 +271,41 @@ function App() {
       setFilters((prev) => ({ ...prev, subSegments: validSubSegments }));
     }
   }, [filters.subSegmentCodes, segmentToSubSegmentMap]);
+
+  // Update filtered service offerings when service lines change
+  useEffect(() => {
+    // Ensure filters.serviceLine1 is an array
+    const serviceLines = filters.serviceLine1 || [];
+
+    if (serviceLines.length === 0) {
+      // If no service lines selected, clear service offerings filter
+      setFilters((prev) => ({ ...prev, serviceOfferings: [] }));
+      setFilteredServiceOfferings([]);
+      return;
+    }
+
+    // Get all service offerings for the selected service lines
+    const relevantOfferings = [];
+    serviceLines.forEach((line) => {
+      // Add null check to avoid accessing properties of undefined
+      if (serviceToOfferingMap && serviceToOfferingMap[line]) {
+        relevantOfferings.push(...serviceToOfferingMap[line]);
+      }
+    });
+
+    // Remove duplicates
+    const uniqueOfferings = [...new Set(relevantOfferings)];
+    setFilteredServiceOfferings(uniqueOfferings);
+
+    // Remove any selected service offerings that are no longer valid
+    const validOfferings = (filters.serviceOfferings || []).filter((offering) =>
+      uniqueOfferings.includes(offering)
+    );
+
+    if (validOfferings.length !== (filters.serviceOfferings || []).length) {
+      setFilters((prev) => ({ ...prev, serviceOfferings: validOfferings }));
+    }
+  }, [filters.serviceLine1, serviceToOfferingMap]);
 
   // Apply filters whenever they change
   useEffect(() => {
@@ -267,21 +359,21 @@ function App() {
     }
 
     if (safeFilters.technologyPartners?.length > 0) {
-    result = result.filter((item) => {
-      // Check if the opportunity has any of the selected technology partners
-      // in any of the three technology partner columns
-      const techPartner1 = item["Technology Partner 1"];
-      const techPartner2 = item["Technology Partner 2"];
-      const techPartner3 = item["Technology Partner 3"];
-      
-      return safeFilters.technologyPartners.some(selectedPartner => {
-        return (
-          (techPartner1 && techPartner1.includes(selectedPartner)) ||
-          (techPartner2 && techPartner2.includes(selectedPartner)) ||
-          (techPartner3 && techPartner3.includes(selectedPartner))
-        );
+      result = result.filter((item) => {
+        // Check if the opportunity has any of the selected technology partners
+        // in any of the three technology partner columns
+        const techPartner1 = item["Technology Partner 1"];
+        const techPartner2 = item["Technology Partner 2"];
+        const techPartner3 = item["Technology Partner 3"];
+        
+        return safeFilters.technologyPartners.some(selectedPartner => {
+          return (
+            (techPartner1 && techPartner1.includes(selectedPartner)) ||
+            (techPartner2 && techPartner2.includes(selectedPartner)) ||
+            (techPartner3 && techPartner3.includes(selectedPartner))
+          );
+        });
       });
-    });
     }
 
     // Handle service line filtering and allocation separately
@@ -431,6 +523,25 @@ function App() {
         newItem["Allocated Service Line"] = allocatedServiceLine;
 
         return newItem;
+      });
+    }
+
+    // Apply service offerings filter
+    if (safeFilters.serviceOfferings?.length > 0) {
+      result = result.filter((item) => {
+        // Check if the opportunity has any of the selected service offerings
+        // in any of the three service offering columns
+        const offering1 = item["Service Offering 1"];
+        const offering2 = item["Service Offering 2"];
+        const offering3 = item["Service Offering 3"];
+        
+        return safeFilters.serviceOfferings.some(selectedOffering => {
+          return (
+            (offering1 && offering1 === selectedOffering) ||
+            (offering2 && offering2 === selectedOffering) ||
+            (offering3 && offering3 === selectedOffering)
+          );
+        });
       });
     }
 
@@ -729,7 +840,7 @@ function App() {
     </Box>
   );
 
-  // The updated rightSidebarContent with fixed layout to prevent shifting
+  // The updated rightSidebarContent with service line and service offering filters
   const rightSidebarContent = (
     <Box sx={{ p: 3 }}>
       <Typography
@@ -742,6 +853,7 @@ function App() {
       </Typography>
       <Divider sx={{ mb: 3, borderColor: theme.palette.secondary.light }} />
 
+      {/* Service Line filter */}
       <Box
         sx={{
           mb: 2,
@@ -755,7 +867,7 @@ function App() {
           fontWeight={600}
           color={theme.palette.text.primary}
         >
-          Filter by Service
+          Service Lines
         </Typography>
 
         {/* Fixed-width container for the Clear All button */}
@@ -778,7 +890,7 @@ function App() {
         </Box>
       </Box>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mb: 3 }}>
         {(filterOptions.serviceLine1 || []).map((line, index) => {
           // Assign a different color to each service line from theme colors
           const colorKeys = [
@@ -842,6 +954,97 @@ function App() {
           );
         })}
       </Box>
+
+      {/* Service Offering filter - Show only if service lines are selected */}
+      {filters.serviceLine1 &&
+        filters.serviceLine1.length > 0 &&
+        filteredServiceOfferings &&
+        filteredServiceOfferings.length > 0 && (
+          <>
+            <Box
+              sx={{
+                mb: 2,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <Typography
+                variant="subtitle2"
+                fontWeight={600}
+                color={theme.palette.text.primary}
+              >
+                Service Offerings
+              </Typography>
+
+              {/* Fixed-width container for the Clear All button */}
+              <Box sx={{ minWidth: "80px", textAlign: "right" }}>
+                {filters.serviceOfferings && filters.serviceOfferings.length > 0 ? (
+                  <Button
+                    variant="text"
+                    color="secondary"
+                    size="small"
+                    startIcon={<ClearIcon />}
+                    onClick={() => handleClearFilterType("serviceOfferings")}
+                    sx={{ minWidth: "auto", p: 0.5 }}
+                  >
+                    Clear All
+                  </Button>
+                ) : (
+                  /* Placeholder to maintain spacing when button is not visible */
+                  <Box
+                    sx={{ visibility: "hidden", width: "80px", height: "32px" }}
+                  />
+                )}
+              </Box>
+            </Box>
+
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              {filteredServiceOfferings.map((offering) => (
+                <ToggleButton
+                  key={offering}
+                  value={offering}
+                  selected={
+                    filters.serviceOfferings && filters.serviceOfferings.includes(offering)
+                  }
+                  onChange={() => handleToggleFilter("serviceOfferings", offering)}
+                  sx={{
+                    justifyContent: "flex-start",
+                    textAlign: "left",
+                    borderRadius: 2,
+                    px: 2,
+                    py: 1,
+                    mb: 0.5,
+                    fontSize: "0.9rem",
+                    fontWeight: 500,
+                    borderWidth: "2px",
+                    borderColor: "rgba(0, 0, 0, 0.08)",
+                    "&.Mui-selected": {
+                      backgroundColor: theme.palette.warning.main,
+                      color: "white",
+                      fontWeight: 600,
+                      borderColor: theme.palette.warning.main,
+                      "&:hover": {
+                        backgroundColor: theme.palette.warning.dark,
+                        borderColor: theme.palette.warning.dark,
+                      },
+                    },
+                    "&:hover": {
+                      backgroundColor: alpha(theme.palette.warning.main, 0.08),
+                      borderColor: alpha(theme.palette.warning.main, 0.3),
+                    },
+                    transition: "all 0.2s ease-in-out",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {offering}
+                </ToggleButton>
+              ))}
+            </Box>
+          </>
+        )}
     </Box>
   );
 
@@ -1331,7 +1534,7 @@ function App() {
           </Box>
         </Box>
 
-        {/* Right Sidebar - Service Lines */}
+        {/* Right Sidebar - Service Lines and Service Offerings */}
         {opportunityData.length > 0 && !isMobile && (
           <Drawer
             variant="permanent"
