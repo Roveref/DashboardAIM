@@ -33,29 +33,24 @@ import MeetingMinutes from "./MeetingMinutes"; // Import the meeting minutes com
 import OpportunityActions from "./OpportunityActions"; // Import the actions component
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
 
-const isSAPProject = (opportunity) => {
-  // Get all service lines for this opportunity
-  const serviceLines = [
-    opportunity["Service Line 1"],
-    opportunity["Service Line 2"],
-    opportunity["Service Line 3"],
-  ].filter((line) => line && line !== "-"); // Remove empty or dash values
+// Function to get technology partner tags from the three columns
+const getTechnologyPartnerTags = (opportunity) => {
+  const partners = [
+    opportunity["Technology Partner 1"],
+    opportunity["Technology Partner 2"],
+    opportunity["Technology Partner 3"],
+  ].filter((partner) => partner && partner !== "-" && partner.trim() !== "");
 
-  // Check if the opportunity has all three required service lines for SAP
-  const hasOperations = serviceLines.some(
-    (line) => line && line.toLowerCase().includes("operations")
-  );
-  const hasTechnology = serviceLines.some(
-    (line) => line && line.toLowerCase().includes("technology")
-  );
-  const hasFinanceRisk = serviceLines.some(
-    (line) =>
-      line &&
-      (line.toLowerCase().includes("finance") ||
-        line.toLowerCase().includes("risk"))
-  );
+  // Remove duplicates and return unique partners
+  return [...new Set(partners)];
+};
 
-  return hasOperations && hasTechnology && hasFinanceRisk;
+// Function to check if opportunity has a specific technology partner
+const hasTechnologyPartner = (opportunity, partnerName) => {
+  const partners = getTechnologyPartnerTags(opportunity);
+  return partners.some(partner => 
+    partner && partner.toLowerCase().includes(partnerName.toLowerCase())
+  );
 };
 
 // Status colors mapping
@@ -329,6 +324,16 @@ const exportOpportunities = (
         )}\n\n`;
       }
 
+      // Technology Partners
+      const technologyPartners = getTechnologyPartnerTags(opp);
+      if (technologyPartners.length > 0) {
+        markdownContent += `#### Technology Partners\n\n`;
+        technologyPartners.forEach((partner, index) => {
+          markdownContent += `- **Partner ${index + 1}**: ${partner}\n`;
+        });
+        markdownContent += `\n`;
+      }
+
       // Additional Information
       markdownContent += `#### Additional Information\n\n`;
       markdownContent += `- **Project Type**: ${
@@ -426,6 +431,9 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
     row,
     showNetRevenue
   );
+
+  // Get technology partner tags for this opportunity
+  const technologyPartners = getTechnologyPartnerTags(row);
 
   return (
     <>
@@ -607,23 +615,27 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
           </Typography>
         </TableCell>
         <TableCell align="center" sx={{ width: 80 }}>
-          {isSAPProject(row) && (
-            <Chip
-              label="SAP"
-              size="small"
-              sx={{
-                height: 20,
-                fontSize: "0.65rem",
-                fontWeight: 600,
-                backgroundColor: alpha(theme.palette.success.main, 0.15),
-                color: theme.palette.success.main,
-                border: `1px solid ${alpha(theme.palette.success.main, 0.3)}`,
-                "& .MuiChip-label": {
-                  px: 1,
-                },
-              }}
-            />
-          )}
+          {/* Display technology partner tags */}
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+            {technologyPartners.map((partner, index) => (
+              <Chip
+                key={index}
+                label={partner}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: "0.65rem",
+                  fontWeight: 600,
+                  backgroundColor: alpha(theme.palette.info.main, 0.15),
+                  color: theme.palette.info.main,
+                  border: `1px solid ${alpha(theme.palette.info.main, 0.3)}`,
+                  "& .MuiChip-label": {
+                    px: 1,
+                  },
+                }}
+              />
+            ))}
+          </Box>
         </TableCell>
       </TableRow>
 
@@ -729,29 +741,27 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
                         {row["Opportunity"]}
                       </Typography>
                     )}
-                    {isSAPProject(row) && (
-                      <Chip
-                        label="SAP"
-                        size="small"
-                        sx={{
-                          height: 20,
-                          fontSize: "0.65rem",
-                          fontWeight: 600,
-                          backgroundColor: alpha(
-                            theme.palette.success.main,
-                            0.15
-                          ),
-                          color: theme.palette.success.main,
-                          border: `1px solid ${alpha(
-                            theme.palette.success.main,
-                            0.3
-                          )}`,
-                          "& .MuiChip-label": {
-                            px: 1,
-                          },
-                        }}
-                      />
-                    )}
+                    {/* Display technology partner tags */}
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
+                      {technologyPartners.map((partner, index) => (
+                        <Chip
+                          key={index}
+                          label={partner}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: "0.65rem",
+                            fontWeight: 600,
+                            backgroundColor: alpha(theme.palette.info.main, 0.15),
+                            color: theme.palette.info.main,
+                            border: `1px solid ${alpha(theme.palette.info.main, 0.3)}`,
+                            "& .MuiChip-label": {
+                              px: 1,
+                            },
+                          }}
+                        />
+                      ))}
+                    </Box>
                     <Typography variant="body2" color="text.secondary">
                       ID: {row["Opportunity ID"]} • Created:{" "}
                       {new Date(row["Creation Date"]).toLocaleDateString(
@@ -1027,6 +1037,39 @@ const OpportunityRow = ({ row, isSelected, onRowClick, showNetRevenue }) => {
                           </Typography>
                         </Grid>
                       </Grid>
+
+                      {/* Technology Partners Section */}
+                      {technologyPartners.length > 0 && (
+                        <>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mt: 2, display: "block" }}
+                          >
+                            Technology Partners
+                          </Typography>
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
+                            {technologyPartners.map((partner, index) => (
+                              <Chip
+                                key={index}
+                                label={partner}
+                                size="small"
+                                sx={{
+                                  height: 22,
+                                  fontSize: "0.7rem",
+                                  fontWeight: 600,
+                                  backgroundColor: alpha(theme.palette.info.main, 0.15),
+                                  color: theme.palette.info.main,
+                                  border: `1px solid ${alpha(theme.palette.info.main, 0.3)}`,
+                                  "& .MuiChip-label": {
+                                    px: 1,
+                                  },
+                                }}
+                              />
+                            ))}
+                          </Box>
+                        </>
+                      )}
                     </Grid>
 
                     {/* Service Offerings - Center Column */}
@@ -1773,7 +1816,9 @@ const OpportunityList = ({
                   Service Line
                 </TableSortLabel>
               </TableCell>
-              <TableCell align="center" sx={{ width: 80 }}></TableCell>
+              <TableCell align="center" sx={{ width: 120 }}>
+                Technology Partners
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
