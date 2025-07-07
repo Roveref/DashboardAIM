@@ -1721,36 +1721,57 @@ const CustomTooltip = ({ active, payload, label }) => {
   }, [data, loading, showNetRevenue]);
 
   // Bookings 2025 calculation with new revenue logic
-  const bookings2025 = data.filter(
-    (item) =>
-      item["Status"] === 14 &&
-      item["Booking/Lost Date"] &&
-      new Date(item["Booking/Lost Date"]).getFullYear() === 2025
-  );
+ const bookings2025 = data.filter(
+  (item) =>
+    item["Status"] === 14 &&
+    item["Booking/Lost Date"] &&
+    new Date(item["Booking/Lost Date"]).getFullYear() === 2025
+);
 
-  const losses2025 = data.filter(
-    (item) =>
-      item["Status"] === 15 &&
-      item["Booking/Lost Date"] &&
-      new Date(item["Booking/Lost Date"]).getFullYear() === 2025
-  );
+const losses2025 = data.filter(
+  (item) =>
+    item["Status"] === 15 &&
+    item["Booking/Lost Date"] &&
+    new Date(item["Booking/Lost Date"]).getFullYear() === 2025
+);
 
-  // Calculate revenues with new logic
-  const bookings2025Revenue = bookings2025.reduce(
-    (sum, item) =>
-      sum +
-      (showNetRevenue ? item["Net Revenue"] || 0 : item["Gross Revenue"] || 0),
-    0
-  );
-  const losses2025Revenue = losses2025.reduce(
-    (sum, item) =>
-      sum +
-      (showNetRevenue ? item["Net Revenue"] || 0 : item["Gross Revenue"] || 0),
-    0
-  );
-  // Calculate average booking size
-  const averageBookingSize2025 =
-    bookings2025.length > 0 ? bookings2025Revenue / bookings2025.length : 0;
+// Calculate TOTAL revenues (original amounts)
+const bookings2025TotalRevenue = bookings2025.reduce(
+  (sum, item) =>
+    sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
+  0
+);
+
+const losses2025TotalRevenue = losses2025.reduce(
+  (sum, item) =>
+    sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0)),
+  0
+);
+
+// Calculate ALLOCATED revenues (filtered amounts)
+const bookings2025AllocatedRevenue = bookings2025.reduce((sum, item) => {
+  if (item["Is Allocated"]) {
+    return sum + (showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0));
+  } else {
+    return sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0));
+  }
+}, 0);
+
+const losses2025AllocatedRevenue = losses2025.reduce((sum, item) => {
+  if (item["Is Allocated"]) {
+    return sum + (showNetRevenue ? (item["Allocated Net Revenue"] || 0) : (item["Allocated Gross Revenue"] || 0));
+  } else {
+    return sum + (showNetRevenue ? (item["Net Revenue"] || 0) : (item["Gross Revenue"] || 0));
+  }
+}, 0);
+
+// Calculate average booking sizes (both total and allocated)
+const averageBookingSize2025Total = bookings2025.length > 0 ? bookings2025TotalRevenue / bookings2025.length : 0;
+const averageBookingSize2025Allocated = bookings2025.length > 0 ? bookings2025AllocatedRevenue / bookings2025.length : 0;
+
+// Check if we have any allocation applied (to show/hide the allocated figures)
+const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2025.some(item => item["Is Allocated"]);
+
 
   return (
     <Fade in={!loading} timeout={500}>
@@ -1764,391 +1785,405 @@ const CustomTooltip = ({ active, payload, label }) => {
           }}
         >
           {/* Total Bookings Card */}
-          <Grid item xs={12} sm={4}>
-            <Paper
-              elevation={0}
-              sx={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                p: 3,
-                backgroundColor: alpha(theme.palette.primary.main, 0.04),
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
-                borderRadius: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  mb: 2,
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Total Bookings 2025
-                </Typography>
-              </Box>
+         <Grid item xs={12} sm={4}>
+  <Paper
+    elevation={0}
+    sx={{
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      p: 3,
+      backgroundColor: alpha(theme.palette.primary.main, 0.04),
+      border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+      borderRadius: 2,
+    }}
+  >
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 2,
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        Total Bookings 2025
+      </Typography>
+    </Box>
 
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  mb: 2,
-                }}
-              >
-                <Box>
-                  <Typography
-                    variant="h5"
-                    color="primary.main"
-                    fontWeight={700}
-                    sx={{ mb: 0.5 }}
-                  >
-                    {new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(bookings2025Revenue)}
-                    <Typography
-                      component="span"
-                      variant="caption"
-                      color="primary.dark"
-                      sx={{ ml: 1 }}
-                    >
-                      (I&O:{" "}
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(
-                        bookings2025.reduce(
-                          (sum, item) =>
-                            sum +
-                            calculateRevenueWithSegmentLogic(
-                              item,
-                              showNetRevenue
-                            ),
-                          0
-                        )
-                      )}
-                      )
-                    </Typography>
-                  </Typography>
-                </Box>
-              </Box>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        mb: 2,
+      }}
+    >
+      <Box>
+        <Typography
+          variant="h5"
+          color="primary.main"
+          fontWeight={700}
+          sx={{ mb: 0.5 }}
+        >
+          {new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(bookings2025TotalRevenue)}
+        </Typography>
+        
+        {/* Show allocated amount if filtering is applied */}
+        {hasAllocation && Math.abs(bookings2025AllocatedRevenue - bookings2025TotalRevenue) > 1 && (
+          <Typography
+            variant="body2"
+            color="secondary.main"
+            fontWeight={600}
+            sx={{ mt: 0.5 }}
+          >
+            Filtered: {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(bookings2025AllocatedRevenue)}
+          </Typography>
+        )}
 
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  {bookings2025.length} opportunities
-                </Typography>
+        <Typography
+          component="span"
+          variant="caption"
+          color="primary.dark"
+          sx={{ ml: 1 }}
+        >
+          (I&O:{" "}
+          {new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(
+            bookings2025.reduce(
+              (sum, item) =>
+                sum +
+                calculateRevenueWithSegmentLogic(
+                  item,
+                  showNetRevenue
+                ),
+              0
+            )
+          )}
+          )
+        </Typography>
+      </Box>
+    </Box>
 
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    color: theme.palette.success.main,
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="inherit"
-                    fontWeight={600}
-                    sx={{ mr: 1 }}
-                  >
-                    {selectedOpportunities.length > 0
-                      ? `${Math.round(
-                          (bookings2025.length /
-                            data.filter(
-                              (item) =>
-                                item["Status"] === 14 &&
-                                new Date(
-                                  item["Booking/Lost Date"]
-                                ).getFullYear() === 2025
-                            ).length) *
-                            100
-                        )}%`
-                      : "100%"}{" "}
-                    vs total
-                  </Typography>
-                  <ArrowUpwardIcon fontSize="small" color="inherit" />
-                </Box>
-              </Box>
-            </Paper>
-          </Grid>
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        {bookings2025.length} opportunities
+      </Typography>
 
-          {/* Total Lost Opportunities Card */}
-          <Grid item xs={12} sm={4}>
-            <Paper
-              elevation={0}
-              sx={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                p: 3,
-                backgroundColor: alpha(theme.palette.error.main, 0.04),
-                border: `1px solid ${alpha(theme.palette.error.main, 0.1)}`,
-                borderRadius: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  mb: 2,
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Total Lost 2025
-                </Typography>
-              </Box>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          color: theme.palette.success.main,
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="inherit"
+          fontWeight={600}
+          sx={{ mr: 1 }}
+        >
+          100% vs total
+        </Typography>
+        <ArrowUpwardIcon fontSize="small" color="inherit" />
+      </Box>
+    </Box>
+  </Paper>
+</Grid>
 
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  mb: 2,
-                }}
-              >
-                <Box>
-                  <Typography
-                    variant="h5"
-                    color="error.main"
-                    fontWeight={700}
-                    sx={{ mb: 0.5 }}
-                  >
-                    {new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(losses2025Revenue)}
-                  </Typography>
-                </Box>
-              </Box>
+{/* Total Lost Opportunities Card - Updated */}
+<Grid item xs={12} sm={4}>
+  <Paper
+    elevation={0}
+    sx={{
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      p: 3,
+      backgroundColor: alpha(theme.palette.error.main, 0.04),
+      border: `1px solid ${alpha(theme.palette.error.main, 0.1)}`,
+      borderRadius: 2,
+    }}
+  >
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 2,
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        Total Lost 2025
+      </Typography>
+    </Box>
 
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  {losses2025.length} lost opportunities
-                </Typography>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        mb: 2,
+      }}
+    >
+      <Box>
+        <Typography
+          variant="h5"
+          color="error.main"
+          fontWeight={700}
+          sx={{ mb: 0.5 }}
+        >
+          {new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(losses2025TotalRevenue)}
+        </Typography>
+        
+        {/* Show allocated amount if filtering is applied */}
+        {hasAllocation && Math.abs(losses2025AllocatedRevenue - losses2025TotalRevenue) > 1 && (
+          <Typography
+            variant="body2"
+            color="secondary.main"
+            fontWeight={600}
+            sx={{ mt: 0.5 }}
+          >
+            Filtered: {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(losses2025AllocatedRevenue)}
+          </Typography>
+        )}
+      </Box>
+    </Box>
 
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    color: theme.palette.error.main,
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="inherit"
-                    fontWeight={600}
-                    sx={{ mr: 1 }}
-                  >
-                    {selectedOpportunities.length > 0
-                      ? `${Math.round(
-                          (losses2025.length /
-                            data.filter(
-                              (item) =>
-                                item["Status"] === 15 &&
-                                new Date(
-                                  item["Booking/Lost Date"]
-                                ).getFullYear() === 2025
-                            ).length) *
-                            100
-                        )}%`
-                      : "100%"}{" "}
-                    vs total
-                  </Typography>
-                  <ArrowDownwardIcon fontSize="small" color="inherit" />
-                </Box>
-              </Box>
-            </Paper>
-          </Grid>
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        {losses2025.length} lost opportunities
+      </Typography>
 
-          {/* Average Booking Size Card */}
-          <Grid item xs={12} sm={4}>
-            <Paper
-              elevation={0}
-              sx={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                p: 3,
-                backgroundColor: alpha(theme.palette.secondary.main, 0.04),
-                border: `1px solid ${alpha(theme.palette.secondary.main, 0.1)}`,
-                borderRadius: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  mb: 2,
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Average Booking Size 2025
-                </Typography>
-              </Box>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          color: theme.palette.error.main,
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="inherit"
+          fontWeight={600}
+          sx={{ mr: 1 }}
+        >
+          100% vs total
+        </Typography>
+        <ArrowDownwardIcon fontSize="small" color="inherit" />
+      </Box>
+    </Box>
+  </Paper>
+</Grid>
 
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  mb: 2,
-                }}
-              >
-                <Box>
-                  <Typography
-                    variant="h5"
-                    color="secondary.main"
-                    fontWeight={700}
-                    sx={{ mb: 0.5 }}
-                  >
-                    {new Intl.NumberFormat("fr-FR", {
-                      style: "currency",
-                      currency: "EUR",
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    }).format(averageBookingSize2025)}
-                    <Typography
-                      component="span"
-                      variant="caption"
-                      color="primary.main"
-                      sx={{ ml: 1 }}
-                    >
-                      (I&O:{" "}
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(
-                        bookings2025.length > 0
-                          ? bookings2025.reduce(
-                              (sum, item) =>
-                                sum +
-                                calculateRevenueWithSegmentLogic(
-                                  item,
-                                  showNetRevenue
-                                ),
-                              0
-                            ) / bookings2025.length
-                          : 0
-                      )}
-                      )
-                    </Typography>
-                  </Typography>
-                </Box>
-              </Box>
+{/* Average Booking Size Card - Updated */}
+<Grid item xs={12} sm={4}>
+  <Paper
+    elevation={0}
+    sx={{
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      p: 3,
+      backgroundColor: alpha(theme.palette.secondary.main, 0.04),
+      border: `1px solid ${alpha(theme.palette.secondary.main, 0.1)}`,
+      borderRadius: 2,
+    }}
+  >
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 2,
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        Average Booking Size 2025
+      </Typography>
+    </Box>
 
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Range:{" "}
-                  {bookings2025.length > 0 ? (
-                    <>
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(
-                        Math.min(
-                          ...bookings2025
-                            .filter((opp) =>
-                              showNetRevenue
-                                ? opp["Net Revenue"] > 0
-                                : opp["Gross Revenue"] > 0
-                            )
-                            .map((opp) =>
-                              showNetRevenue
-                                ? opp["Net Revenue"] || 0
-                                : opp["Gross Revenue"] || 0
-                            )
-                        )
-                      )}{" "}
-                      -{" "}
-                      {new Intl.NumberFormat("fr-FR", {
-                        style: "currency",
-                        currency: "EUR",
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(
-                        Math.max(
-                          ...bookings2025.map((opp) =>
-                            showNetRevenue
-                              ? opp["Net Revenue"] || 0
-                              : opp["Gross Revenue"] || 0
-                          )
-                        )
-                      )}
-                    </>
-                  ) : (
-                    "N/A"
-                  )}
-                </Typography>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        mb: 2,
+      }}
+    >
+      <Box>
+        <Typography
+          variant="h5"
+          color="secondary.main"
+          fontWeight={700}
+          sx={{ mb: 0.5 }}
+        >
+          {new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(averageBookingSize2025Total)}
+        </Typography>
+        
+        {/* Show allocated average if filtering is applied */}
+        {hasAllocation && Math.abs(averageBookingSize2025Allocated - averageBookingSize2025Total) > 1 && (
+          <Typography
+            variant="body2"
+            color="info.main"
+            fontWeight={600}
+            sx={{ mt: 0.5 }}
+          >
+            Filtered Avg: {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(averageBookingSize2025Allocated)}
+          </Typography>
+        )}
 
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    color: theme.palette.success.main,
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="inherit"
-                    fontWeight={600}
-                    sx={{ mr: 1 }}
-                  >
-                    {selectedOpportunities.length > 0
-                      ? `${Math.round(
-                          (bookings2025.length /
-                            data.filter(
-                              (item) =>
-                                item["Status"] === 14 &&
-                                new Date(
-                                  item["Booking/Lost Date"]
-                                ).getFullYear() === 2025
-                            ).length) *
-                            100
-                        )}%`
-                      : "100%"}{" "}
-                    vs total
-                  </Typography>
-                  <ArrowUpwardIcon fontSize="small" color="inherit" />
-                </Box>
-              </Box>
-            </Paper>
-          </Grid>
+        <Typography
+          component="span"
+          variant="caption"
+          color="primary.main"
+          sx={{ ml: 1 }}
+        >
+          (I&O:{" "}
+          {new Intl.NumberFormat("fr-FR", {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(
+            bookings2025.length > 0
+              ? bookings2025.reduce(
+                  (sum, item) =>
+                    sum +
+                    calculateRevenueWithSegmentLogic(
+                      item,
+                      showNetRevenue
+                    ),
+                  0
+                ) / bookings2025.length
+              : 0
+          )}
+          )
+        </Typography>
+      </Box>
+    </Box>
+
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        Range:{" "}
+        {bookings2025.length > 0 ? (
+          <>
+            {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(
+              Math.min(
+                ...bookings2025
+                  .filter((opp) =>
+                    showNetRevenue
+                      ? opp["Net Revenue"] > 0
+                      : opp["Gross Revenue"] > 0
+                  )
+                  .map((opp) =>
+                    showNetRevenue
+                      ? opp["Net Revenue"] || 0
+                      : opp["Gross Revenue"] || 0
+                  )
+              )
+            )}{" "}
+            -{" "}
+            {new Intl.NumberFormat("fr-FR", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(
+              Math.max(
+                ...bookings2025.map((opp) =>
+                  showNetRevenue
+                    ? opp["Net Revenue"] || 0
+                    : opp["Gross Revenue"] || 0
+                )
+              )
+            )}
+          </>
+        ) : (
+          "N/A"
+        )}
+      </Typography>
+
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          color: theme.palette.success.main,
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="inherit"
+          fontWeight={600}
+          sx={{ mr: 1 }}
+        >
+          100% vs total
+        </Typography>
+        <ArrowUpwardIcon fontSize="small" color="inherit" />
+      </Box>
+    </Box>
+  </Paper>
+</Grid>
         </Grid>
 
         {/* Monthly Bookings Chart */}
