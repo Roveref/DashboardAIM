@@ -1390,21 +1390,19 @@ const CustomTooltip = ({ active, payload, label }) => {
           }
         }, 0);
 
-        // Calculate filtered monthly I&O revenue
+        // Calculate filtered monthly I&O revenue using calculateRevenueWithSegmentLogic
         yearEntry.filteredMonthlyIO = oppList.reduce((sum, opp) => {
+          // Create a temporary opportunity object with allocated values if needed
+          const tempOpp = { ...opp };
           if (opp["Is Allocated"]) {
-            // For allocated opportunities, calculate I&O on allocated amount
-            const allocatedRevenue = showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0);
-            // Apply segment logic proportionally
-            const originalRevenue = showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0);
-            const originalIO = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
-            if (originalRevenue > 0) {
-              return sum + (allocatedRevenue * (originalIO / originalRevenue));
+            // Replace revenue fields with allocated values for I&O calculation
+            if (showNetRevenue) {
+              tempOpp["Net Revenue"] = opp["Allocated Net Revenue"] || 0;
+            } else {
+              tempOpp["Gross Revenue"] = opp["Allocated Gross Revenue"] || 0;
             }
-            return sum;
-          } else {
-            return sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue);
           }
+          return sum + calculateRevenueWithSegmentLogic(tempOpp, showNetRevenue);
         }, 0);
       }
 
@@ -1419,21 +1417,19 @@ const CustomTooltip = ({ active, payload, label }) => {
           }
         }, 0);
 
-        // Calculate filtered cumulative I&O revenue
+        // Calculate filtered cumulative I&O revenue using calculateRevenueWithSegmentLogic
         yearEntry.filteredCumulativeIO = cumulativeOppList.reduce((sum, opp) => {
+          // Create a temporary opportunity object with allocated values if needed
+          const tempOpp = { ...opp };
           if (opp["Is Allocated"]) {
-            // For allocated opportunities, calculate I&O on allocated amount
-            const allocatedRevenue = showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0);
-            // Apply segment logic proportionally
-            const originalRevenue = showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0);
-            const originalIO = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
-            if (originalRevenue > 0) {
-              return sum + (allocatedRevenue * (originalIO / originalRevenue));
+            // Replace revenue fields with allocated values for I&O calculation
+            if (showNetRevenue) {
+              tempOpp["Net Revenue"] = opp["Allocated Net Revenue"] || 0;
+            } else {
+              tempOpp["Gross Revenue"] = opp["Allocated Gross Revenue"] || 0;
             }
-            return sum;
-          } else {
-            return sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue);
           }
+          return sum + calculateRevenueWithSegmentLogic(tempOpp, showNetRevenue);
         }, 0);
       }
     });
@@ -1732,7 +1728,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   }
   return null;
 };
-
   // Add this useEffect to trigger the initial data processing and chart population
   useEffect(() => {
     if (data && data.length > 0 && !loading) {
