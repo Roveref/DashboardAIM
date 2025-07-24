@@ -1084,33 +1084,24 @@ const BookingsTab = ({
   const theme = useTheme();
 
   // More distinct color palette
-  const COLORS = [
-    {
-      bar: "#1E88E5", // Vibrant Blue
-      line: "#0D47A1", // Dark Blue
-      opacity: 0.7,
-    },
-    {
-      bar: "#D81B60", // Vibrant Pink
-      line: "#880E4F", // Dark Maroon
-      opacity: 0.7,
-    },
-    {
-      bar: "#FFC107", // Amber
-      line: "#FF6F00", // Dark Orange
-      opacity: 0.7,
-    },
-    {
-      bar: "#004D40", // Dark Teal
-      line: "#00251A", // Almost Black Teal
-      opacity: 0.7,
-    },
-    {
-      bar: "#6A1B9A", // Deep Purple
-      line: "#4A148C", // Darker Purple
-      opacity: 0.7,
-    },
-  ];
+ const COLOR_BY_YEAR = {
+  2024: {
+    bar: "#1E88E5", // Bleu pour 2024
+    line: "#0D47A1", 
+    opacity: 0.7,
+  },
+  2025: {
+    bar: "#D81B60", // Rouge/Rose pour 2025
+    line: "#880E4F", 
+    opacity: 0.7,
+  },
+  2026: {
+    bar: "#FFC107", // Jaune pour 2026 (au cas où)
+    line: "#FF6F00", 
+    opacity: 0.7,
+  },
+  // Ajoutez d'autres années si nécessaire
+};
 
   // Update date analysis method to use Booking/Lost Date
   const updateDateAnalysis = () => {
@@ -2522,8 +2513,12 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
     <Tooltip content={<CustomTooltip />} />
 
     {/* Bars and Lines for each year */}
-    {years.map((year, index) => {
-      const colorSet = COLORS[index % COLORS.length];
+{years.map((year) => {
+  const colorSet = COLOR_BY_YEAR[year] || {
+    bar: "#757575", // Gris par défaut pour années inconnues
+    line: "#424242",
+    opacity: 0.7,
+  };
       return (
         <React.Fragment key={year}>
           {/* I&O Revenue Bar (Bottom) */}
