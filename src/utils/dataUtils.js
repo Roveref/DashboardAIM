@@ -259,36 +259,48 @@ export const getMonthlyYearlyTotals = (data, dateColumn, valueColumn) => {
  * @returns {Array} Formatted data for YoY chart
  */
 export const formatYearOverYearData = (monthlyYearlyData) => {
-  // Group by month
-  const byMonth = {};
+  // Définir tous les mois de l'année (0-11 car JavaScript commence à 0)
+  const allMonths = [];
+  for (let i = 0; i < 12; i++) {
+    allMonths.push({
+      month: i,
+      monthName: new Date(2024, i, 1).toLocaleString("default", { month: "short" })
+    });
+  }
 
-  // Get unique years
-  const years = [...new Set(monthlyYearlyData.map((item) => item.year))].sort();
+  // Obtenir toutes les années uniques des données
+  const years = [...new Set(monthlyYearlyData.map(item => item.year))].sort();
 
-  // Group by month
-  monthlyYearlyData.forEach((item) => {
-    if (!byMonth[item.month]) {
-      byMonth[item.month] = {
-        month: item.month,
-        monthName: item.monthName,
-      };
+  // Créer la structure de base avec tous les mois
+  const result = allMonths.map(monthInfo => {
+    const monthData = {
+      month: monthInfo.month,
+      monthName: monthInfo.monthName
+    };
 
-      // Initialize years with zero values
-      years.forEach((year) => {
-        byMonth[item.month][`${year}`] = 0;
-        byMonth[item.month][`${year}Count`] = 0;
-        byMonth[item.month][`${year}Opps`] = [];
-      });
-    }
+    // Pour chaque année, initialiser les valeurs à 0
+    years.forEach(year => {
+      monthData[`${year}`] = 0;
+      monthData[`${year}Count`] = 0;
+      monthData[`${year}Opps`] = [];
+    });
 
-    // Add values for the specific year
-    byMonth[item.month][`${item.year}`] = item.total;
-    byMonth[item.month][`${item.year}Count`] = item.count;
-    byMonth[item.month][`${item.year}Opps`] = item.opportunities;
+    return monthData;
   });
 
-  // Convert to array and sort by month
-  return Object.values(byMonth).sort((a, b) => a.month - b.month);
+  // Remplir avec les données existantes
+  monthlyYearlyData.forEach(item => {
+    const monthIndex = item.month; // item.month est déjà 0-11
+    
+    if (monthIndex >= 0 && monthIndex < 12) {
+      const monthData = result[monthIndex];
+      monthData[`${item.year}`] = item.total;
+      monthData[`${item.year}Count`] = item.count;
+      monthData[`${item.year}Opps`] = item.opportunities || [];
+    }
+  });
+
+  return result;
 };
 
 /**
