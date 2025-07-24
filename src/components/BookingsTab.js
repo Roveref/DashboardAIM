@@ -2514,63 +2514,65 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
 
     {/* Bars and Lines for each year */}
 {years.map((year) => {
+  // Utilisez la couleur fixe pour cette année, ou une couleur par défaut
   const colorSet = COLOR_BY_YEAR[year] || {
-    bar: "#757575", // Gris par défaut pour années inconnues
+    bar: "#757575", // Gris par défaut
     line: "#424242",
     opacity: 0.7,
   };
-      return (
-        <React.Fragment key={year}>
-          {/* I&O Revenue Bar (Bottom) */}
-          <Bar
-            yAxisId="monthly"
-            dataKey={`${year}_io`}
-            name={index === 0 ? `${year} Revenue` : ""}
-            fill={colorSet.bar}
-            fillOpacity={0.9}
-            stackId={`${year}-stack`}
-          />
+  
+  return (
+    <React.Fragment key={year}>
+      {/* I&O Revenue Bar (Bottom) */}
+      <Bar
+        yAxisId="monthly"
+        dataKey={`${year}_io`}
+        name={`${year} Revenue`}
+        fill={colorSet.bar}
+        fillOpacity={0.9}
+        stackId={`${year}-stack`}
+      />
 
-          {/* Complement Revenue Bar (Top) */}
-          <Bar
-            yAxisId="monthly"
-            dataKey={`${year}_complement`}
-            name=""
-            fill={colorSet.bar}
-            fillOpacity={0.4}
-            stackId={`${year}-stack`}
-          />
+      {/* Complement Revenue Bar (Top) */}
+      <Bar
+        yAxisId="monthly"
+        dataKey={`${year}_complement`}
+        name=""
+        fill={colorSet.bar}
+        fillOpacity={0.4}
+        stackId={`${year}-stack`}
+      />
 
-          {/* Cumulative Line */}
-          <Line
-            yAxisId="cumulative"
-            type="monotone"
-            dataKey={`${year}_cumulative`}
-            name={`${year} Cumulatif`}
-            stroke={colorSet.line}
-            strokeWidth={3}
-            dot={false}
-          />
+      {/* Cumulative Line */}
+      <Line
+        yAxisId="cumulative"
+        type="monotone"
+        dataKey={`${year}_cumulative`}
+        name={`${year} Cumulatif`}
+        stroke={colorSet.line}
+        strokeWidth={3}
+        dot={false}
+      />
 
-          {/* Cumulative I&O Line */}
-          <Line
-            yAxisId="cumulative"
-            type="monotone"
-            dataKey={`${year}_io_cumulative`}
-            name=""
-            stroke={colorSet.line}
-            strokeWidth={2}
-            strokeDasharray="4 4"
-            dot={{
-              fill: colorSet.line,
-              stroke: colorSet.line,
-              strokeWidth: 2,
-              r: 2
-            }}
-          />
-        </React.Fragment>
-      );
-    })}
+      {/* Cumulative I&O Line */}
+      <Line
+        yAxisId="cumulative"
+        type="monotone"
+        dataKey={`${year}_io_cumulative`}
+        name=""
+        stroke={colorSet.line}
+        strokeWidth={2}
+        strokeDasharray="4 4"
+        dot={{
+          fill: colorSet.line,
+          stroke: colorSet.line,
+          strokeWidth: 2,
+          r: 2
+        }}
+      />
+    </React.Fragment>
+  );
+})}
 
     {/* LIGNE D'OBJECTIF I&O - APRÈS LA BOUCLE DES ANNÉES */}
    {!hasFiltersApplied() && (
