@@ -1902,6 +1902,27 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
     }).format(amount);
   };
 
+  // Fonction pour calculer et formater la variation
+  const formatVariation = (value2025, value2024) => {
+    if (value2024 === 0 && value2025 === 0) return "";
+    if (value2024 === 0) return value2025 > 0 ? "+∞" : "";
+    
+    const variation = ((value2025 - value2024) / value2024) * 100;
+    const sign = variation > 0 ? "+" : "";
+    return `${sign}${variation.toFixed(0)}%`;
+  };
+
+  // Fonction pour obtenir la couleur de la variation
+  const getVariationColor = (value2025, value2024) => {
+    if (value2024 === 0 && value2025 === 0) return "text.disabled";
+    if (value2024 === 0) return value2025 > 0 ? "success.main" : "text.disabled";
+    
+    const variation = value2025 - value2024;
+    if (variation > 0) return "success.main";
+    if (variation < 0) return "error.main";
+    return "text.secondary";
+  };
+
   // Fonction pour calculer les valeurs filtrées
   const getFilteredValues = (monthData, year, type = 'monthly') => {
     const oppList = type === 'monthly' 
@@ -1970,13 +1991,12 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
         </MuiTooltip>
       </Box>
 
-      {/* Tableau collapsible transposé */}
+      {/* Tableau collapsible restructuré */}
       <Collapse in={showDetailsTable}>
         <Box sx={{ p: 2, overflow: "auto" }}>
           <TableContainer sx={{ maxHeight: 800, overflow: "auto" }}>
             <Table stickyHeader size="small" sx={{ minWidth: "100%" }}>
               <TableHead>
-                {/* Première ligne d'en-tête : Types de données */}
                 <TableRow>
                   <TableCell 
                     sx={{ 
@@ -1985,11 +2005,11 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                       position: "sticky",
                       left: 0,
                       zIndex: 2,
-                      minWidth: 120,
-                      fontSize: "0.8rem"
+                      minWidth: 180,
+                      fontSize: "0.85rem"
                     }}
                   >
-                    Année / Type
+                    Type de données
                   </TableCell>
                   
                   {cumulativeData.map((monthData, index) => {
@@ -2006,21 +2026,21 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                             ? alpha(theme.palette.info.main, 0.1)
                             : theme.palette.grey[50],
                           color: isCurrentMonth ? "info.main" : "text.primary",
-                          minWidth: 100,
-                          fontSize: "0.75rem",
+                          minWidth: 130,
+                          fontSize: "0.8rem",
                           padding: "8px 6px"
                         }}
                       >
                         <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                          <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                            {monthData.monthName.substring(0, 3)}
+                          <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.8rem" }}>
+                            {monthData.monthName}
                           </Typography>
                           {isCurrentMonth && (
                             <Chip 
-                              label="●" 
+                              label="Actuel" 
                               size="small" 
                               color="info" 
-                              sx={{ fontSize: "0.6rem", height: 16, minWidth: 16, "& .MuiChip-label": { px: 0.5 } }}
+                              sx={{ fontSize: "0.65rem", height: 18, mt: 0.5 }}
                             />
                           )}
                         </Box>
@@ -2031,299 +2051,351 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
               </TableHead>
               
               <TableBody>
-                {years.map(year => (
-                  <React.Fragment key={year}>
-                    {/* Ligne : Total Mensuel */}
-                    <TableRow hover>
+                {/* SECTION: REVENUS TOTAUX */}
+                
+                {/* Ligne : Total Cumulé */}
+                <TableRow sx={{ backgroundColor: alpha(theme.palette.grey[100], 0.5) }}>
+                  <TableCell 
+                    sx={{ 
+                      fontWeight: 700,
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 1,
+                      backgroundColor: alpha(theme.palette.grey[200], 0.8),
+                      fontSize: "0.85rem",
+                      borderBottom: `2px solid ${theme.palette.divider}`
+                    }}
+                  >
+                    📊 Total Cumulé
+                  </TableCell>
+                  {cumulativeData.map((monthData, index) => {
+                    const value2025 = monthData[`2025_cumulative`] || 0;
+                    const value2024 = monthData[`2024_cumulative`] || 0;
+                    const variation = formatVariation(value2025, value2024);
+                    const variationColor = getVariationColor(value2025, value2024);
+                    
+                    return (
                       <TableCell 
-                        sx={{ 
-                          fontWeight: 600,
-                          position: "sticky",
-                          left: 0,
-                          zIndex: 1,
-                          backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                          fontSize: "0.8rem"
-                        }}
+                        key={index} 
+                        align="center"
+                        sx={{ fontSize: "0.75rem", padding: "8px 4px", borderBottom: `2px solid ${theme.palette.divider}` }}
                       >
-                        {year} - Total M.
-                      </TableCell>
-                      {cumulativeData.map((monthData, index) => {
-                        const monthlyTotal = (monthData[`${year}_io`] || 0) + (monthData[`${year}_complement`] || 0);
-                        return (
-                          <TableCell 
-                            key={index} 
-                            align="center"
-                            sx={{ fontSize: "0.75rem", padding: "6px 4px" }}
-                          >
-                            {monthlyTotal > 0 ? (
-                              <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                                {formatCurrency(monthlyTotal)}
+                        <Box>
+                          <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.8rem", mb: 0.5 }}>
+                            {formatCurrency(value2025)}
+                          </Typography>
+                          {value2024 > 0 && (
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                ({formatCurrency(value2024)})
                               </Typography>
-                            ) : (
-                              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-
-                    {/* Ligne : I&O Mensuel */}
-                    <TableRow hover>
-                      <TableCell 
-                        sx={{ 
-                          fontWeight: 600,
-                          position: "sticky",
-                          left: 0,
-                          zIndex: 1,
-                          backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                          color: "primary.main",
-                          fontSize: "0.8rem"
-                        }}
-                      >
-                        {year} - I&O M.
-                      </TableCell>
-                      {cumulativeData.map((monthData, index) => {
-                        const monthlyIO = monthData[`${year}_io`] || 0;
-                        const monthlyTotal = (monthData[`${year}_io`] || 0) + (monthData[`${year}_complement`] || 0);
-                        return (
-                          <TableCell 
-                            key={index} 
-                            align="center"
-                            sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
-                          >
-                            {monthlyIO > 0 ? (
-                              <Box>
-                                <Typography variant="caption" color="primary.main" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                                  {formatCurrency(monthlyIO)}
+                              {variation && (
+                                <Typography variant="caption" color={variationColor} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                  {variation}
                                 </Typography>
-                                {monthlyTotal > 0 && (
-                                  <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.6rem" }}>
-                                    {((monthlyIO / monthlyTotal) * 100).toFixed(0)}%
-                                  </Typography>
-                                )}
-                              </Box>
-                            ) : (
-                              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
 
-                    {/* Ligne : Filtré Mensuel - seulement si filtres appliqués */}
-                    {hasFiltersApplied && (
-                      <TableRow hover sx={{ backgroundColor: alpha(theme.palette.secondary.main, 0.02) }}>
-                        <TableCell 
-                          sx={{ 
-                            fontWeight: 600,
-                            position: "sticky",
-                            left: 0,
-                            zIndex: 1,
-                            backgroundColor: alpha(theme.palette.secondary.main, 0.1),
-                            color: "secondary.main",
-                            fontSize: "0.8rem"
-                          }}
-                        >
-                          {year} - Filt. M.
-                        </TableCell>
-                        {cumulativeData.map((monthData, index) => {
-                          const monthlyFiltered = getFilteredValues(monthData, year, 'monthly');
-                          const monthlyTotal = (monthData[`${year}_io`] || 0) + (monthData[`${year}_complement`] || 0);
-                          return (
-                            <TableCell 
-                              key={index} 
-                              align="center"
-                              sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
-                            >
-                              {monthlyFiltered.total > 0 ? (
+                {/* Ligne : Total Mensuel */}
+                <TableRow hover sx={{ backgroundColor: alpha(theme.palette.grey[50], 0.3) }}>
+                  <TableCell 
+                    sx={{ 
+                      fontWeight: 600,
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 1,
+                      backgroundColor: alpha(theme.palette.grey[100], 0.6),
+                      fontSize: "0.85rem",
+                      pl: 3
+                    }}
+                  >
+                    📈 Total Mensuel
+                  </TableCell>
+                  {cumulativeData.map((monthData, index) => {
+                    const value2025 = (monthData[`2025_io`] || 0) + (monthData[`2025_complement`] || 0);
+                    const value2024 = (monthData[`2024_io`] || 0) + (monthData[`2024_complement`] || 0);
+                    const variation = formatVariation(value2025, value2024);
+                    const variationColor = getVariationColor(value2025, value2024);
+                    
+                    return (
+                      <TableCell 
+                        key={index} 
+                        align="center"
+                        sx={{ fontSize: "0.75rem", padding: "8px 4px" }}
+                      >
+                        <Box>
+                          <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.8rem", mb: 0.5 }}>
+                            {formatCurrency(value2025)}
+                          </Typography>
+                          {value2024 > 0 && (
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                ({formatCurrency(value2024)})
+                              </Typography>
+                              {variation && (
+                                <Typography variant="caption" color={variationColor} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                  {variation}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+
+                {/* SECTION: I&O */}
+
+                {/* Ligne : I&O Cumulé */}
+                <TableRow sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
+                  <TableCell 
+                    sx={{ 
+                      fontWeight: 700,
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 1,
+                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                      color: "primary.main",
+                      fontSize: "0.85rem",
+                      borderBottom: `2px solid ${alpha(theme.palette.primary.main, 0.2)}`
+                    }}
+                  >
+                    🎯 I&O Cumulé
+                  </TableCell>
+                  {cumulativeData.map((monthData, index) => {
+                    const value2025 = monthData[`2025_io_cumulative`] || 0;
+                    const value2024 = monthData[`2024_io_cumulative`] || 0;
+                    const variation = formatVariation(value2025, value2024);
+                    const variationColor = getVariationColor(value2025, value2024);
+                    
+                    return (
+                      <TableCell 
+                        key={index} 
+                        align="center"
+                        sx={{ fontSize: "0.75rem", padding: "8px 4px", borderBottom: `2px solid ${alpha(theme.palette.primary.main, 0.2)}` }}
+                      >
+                        <Box>
+                          <Typography variant="body2" fontWeight={600} color="primary.main" sx={{ fontSize: "0.8rem", mb: 0.5 }}>
+                            {formatCurrency(value2025)}
+                          </Typography>
+                          {value2024 > 0 && (
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                ({formatCurrency(value2024)})
+                              </Typography>
+                              {variation && (
+                                <Typography variant="caption" color={variationColor} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                  {variation}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+
+                {/* Ligne : I&O Mensuel */}
+                <TableRow hover sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.02) }}>
+                  <TableCell 
+                    sx={{ 
+                      fontWeight: 600,
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 1,
+                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                      color: "primary.main",
+                      fontSize: "0.85rem",
+                      pl: 3
+                    }}
+                  >
+                    🔹 I&O Mensuel
+                  </TableCell>
+                  {cumulativeData.map((monthData, index) => {
+                    const value2025 = monthData[`2025_io`] || 0;
+                    const value2024 = monthData[`2024_io`] || 0;
+                    const variation = formatVariation(value2025, value2024);
+                    const variationColor = getVariationColor(value2025, value2024);
+                    
+                    return (
+                      <TableCell 
+                        key={index} 
+                        align="center"
+                        sx={{ fontSize: "0.75rem", padding: "8px 4px" }}
+                      >
+                        <Box>
+                          <Typography variant="body2" fontWeight={600} color="primary.main" sx={{ fontSize: "0.8rem", mb: 0.5 }}>
+                            {formatCurrency(value2025)}
+                          </Typography>
+                          {value2024 > 0 && (
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                ({formatCurrency(value2024)})
+                              </Typography>
+                              {variation && (
+                                <Typography variant="caption" color={variationColor} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                  {variation}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+
+                {/* SECTION: FILTRES (seulement si filtres appliqués) */}
+                {hasFiltersApplied && (
+                  <>
+                    {/* Ligne : Total Filtré Cumulé */}
+                    <TableRow sx={{ backgroundColor: alpha(theme.palette.secondary.main, 0.05) }}>
+                      <TableCell 
+                        sx={{ 
+                          fontWeight: 700,
+                          position: "sticky",
+                          left: 0,
+                          zIndex: 1,
+                          backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+                          color: "secondary.main",
+                          fontSize: "0.85rem",
+                          borderBottom: `2px solid ${alpha(theme.palette.secondary.main, 0.2)}`
+                        }}
+                      >
+                        🔍 Total Filtré Cumulé
+                      </TableCell>
+                      {cumulativeData.map((monthData, index) => {
+                        const filtered2025 = getFilteredValues(monthData, '2025', 'cumulative');
+                        const filtered2024 = getFilteredValues(monthData, '2024', 'cumulative');
+                        const variation = formatVariation(filtered2025.total, filtered2024.total);
+                        const variationColor = getVariationColor(filtered2025.total, filtered2024.total);
+                        
+                        return (
+                          <TableCell 
+                            key={index} 
+                            align="center"
+                            sx={{ fontSize: "0.75rem", padding: "8px 4px", borderBottom: `2px solid ${alpha(theme.palette.secondary.main, 0.2)}` }}
+                          >
+                            <Box>
+                              <Typography variant="body2" fontWeight={600} color="secondary.main" sx={{ fontSize: "0.8rem", mb: 0.5 }}>
+                                {formatCurrency(filtered2025.total)}
+                              </Typography>
+                              {filtered2024.total > 0 && (
                                 <Box>
-                                  <Typography variant="caption" color="secondary.main" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                                    {formatCurrency(monthlyFiltered.total)}
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                    ({formatCurrency(filtered2024.total)})
                                   </Typography>
-                                  {monthlyTotal > 0 && monthlyFiltered.total !== monthlyTotal && (
-                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.6rem" }}>
-                                      {((monthlyFiltered.total / monthlyTotal) * 100).toFixed(0)}%
+                                  {variation && (
+                                    <Typography variant="caption" color={variationColor} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                      {variation}
                                     </Typography>
                                   )}
                                 </Box>
-                              ) : (
-                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                                  -
-                                </Typography>
                               )}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    )}
+                            </Box>
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
 
-                    {/* Ligne : Total Cumulé */}
-                    <TableRow hover sx={{ backgroundColor: alpha(theme.palette.grey[100], 0.3) }}>
+                    {/* Ligne : Total Filtré Mensuel */}
+                    <TableRow hover sx={{ backgroundColor: alpha(theme.palette.secondary.main, 0.02) }}>
                       <TableCell 
                         sx={{ 
                           fontWeight: 600,
                           position: "sticky",
                           left: 0,
                           zIndex: 1,
-                          backgroundColor: alpha(theme.palette.grey[300], 0.3),
-                          fontSize: "0.8rem"
+                          backgroundColor: alpha(theme.palette.secondary.main, 0.05),
+                          color: "secondary.main",
+                          fontSize: "0.85rem",
+                          pl: 3
                         }}
                       >
-                        {year} - Total C.
+                        🔸 Total Filtré Mensuel
                       </TableCell>
                       {cumulativeData.map((monthData, index) => {
-                        const cumulativeTotal = monthData[`${year}_cumulative`] || 0;
+                        const filtered2025 = getFilteredValues(monthData, '2025', 'monthly');
+                        const filtered2024 = getFilteredValues(monthData, '2024', 'monthly');
+                        const variation = formatVariation(filtered2025.total, filtered2024.total);
+                        const variationColor = getVariationColor(filtered2025.total, filtered2024.total);
+                        
                         return (
                           <TableCell 
                             key={index} 
                             align="center"
-                            sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
+                            sx={{ fontSize: "0.75rem", padding: "8px 4px" }}
                           >
-                            {cumulativeTotal > 0 ? (
-                              <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                                {formatCurrency(cumulativeTotal)}
+                            <Box>
+                              <Typography variant="body2" fontWeight={600} color="secondary.main" sx={{ fontSize: "0.8rem", mb: 0.5 }}>
+                                {formatCurrency(filtered2025.total)}
                               </Typography>
-                            ) : (
-                              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-
-                    {/* Ligne : I&O Cumulé */}
-                    <TableRow hover sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.02) }}>
-                      <TableCell 
-                        sx={{ 
-                          fontWeight: 600,
-                          position: "sticky",
-                          left: 0,
-                          zIndex: 1,
-                          backgroundColor: alpha(theme.palette.primary.main, 0.15),
-                          color: "primary.main",
-                          fontSize: "0.8rem"
-                        }}
-                      >
-                        {year} - I&O C.
-                      </TableCell>
-                      {cumulativeData.map((monthData, index) => {
-                        const cumulativeIO = monthData[`${year}_io_cumulative`] || 0;
-                        const cumulativeTotal = monthData[`${year}_cumulative`] || 0;
-                        return (
-                          <TableCell 
-                            key={index} 
-                            align="center"
-                            sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
-                          >
-                            {cumulativeIO > 0 ? (
-                              <Box>
-                                <Typography variant="caption" color="primary.main" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                                  {formatCurrency(cumulativeIO)}
-                                </Typography>
-                                {cumulativeTotal > 0 && (
-                                  <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.6rem" }}>
-                                    {((cumulativeIO / cumulativeTotal) * 100).toFixed(0)}%
-                                  </Typography>
-                                )}
-                              </Box>
-                            ) : (
-                              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-
-                    {/* Ligne : Filtré Cumulé - seulement si filtres appliqués */}
-                    {hasFiltersApplied && (
-                      <TableRow hover sx={{ backgroundColor: alpha(theme.palette.secondary.main, 0.02) }}>
-                        <TableCell 
-                          sx={{ 
-                            fontWeight: 600,
-                            position: "sticky",
-                            left: 0,
-                            zIndex: 1,
-                            backgroundColor: alpha(theme.palette.secondary.main, 0.15),
-                            color: "secondary.main",
-                            fontSize: "0.8rem"
-                          }}
-                        >
-                          {year} - Filt. C.
-                        </TableCell>
-                        {cumulativeData.map((monthData, index) => {
-                          const cumulativeFiltered = getFilteredValues(monthData, year, 'cumulative');
-                          const cumulativeTotal = monthData[`${year}_cumulative`] || 0;
-                          return (
-                            <TableCell 
-                              key={index} 
-                              align="center"
-                              sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
-                            >
-                              {cumulativeFiltered.total > 0 ? (
+                              {filtered2024.total > 0 && (
                                 <Box>
-                                  <Typography variant="caption" color="secondary.main" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
-                                    {formatCurrency(cumulativeFiltered.total)}
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                    ({formatCurrency(filtered2024.total)})
                                   </Typography>
-                                  {cumulativeTotal > 0 && cumulativeFiltered.total !== cumulativeTotal && (
-                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.6rem" }}>
-                                      {((cumulativeFiltered.total / cumulativeTotal) * 100).toFixed(0)}%
+                                  {variation && (
+                                    <Typography variant="caption" color={variationColor} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                      {variation}
                                     </Typography>
                                   )}
                                 </Box>
-                              ) : (
-                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                                  -
-                                </Typography>
                               )}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    )}
-                  </React.Fragment>
-                ))}
+                            </Box>
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  </>
+                )}
 
-                {/* Ligne : Objectif I&O - seulement si pas de filtres */}
+                {/* LIGNE: Objectif I&O (seulement si pas de filtres) */}
                 {!hasFiltersApplied && (
-                  <TableRow hover sx={{ backgroundColor: alpha(theme.palette.warning.main, 0.05) }}>
+                  <TableRow sx={{ backgroundColor: alpha(theme.palette.warning.main, 0.05) }}>
                     <TableCell 
                       sx={{ 
-                        fontWeight: 600,
+                        fontWeight: 700,
                         position: "sticky",
                         left: 0,
                         zIndex: 1,
                         backgroundColor: alpha(theme.palette.warning.main, 0.1),
                         color: "warning.main",
-                        fontSize: "0.8rem"
+                        fontSize: "0.85rem",
+                        borderTop: `2px solid ${alpha(theme.palette.warning.main, 0.2)}`
                       }}
                     >
-                      Objectif I&O
+                      🎯 Objectif I&O 2025
                     </TableCell>
                     {cumulativeData.map((monthData, index) => {
                       const ioTarget = monthData.ioTarget || 0;
+                      const actual2025 = monthData[`2025_io_cumulative`] || 0;
+                      const progressPercent = ioTarget > 0 ? ((actual2025 / ioTarget) * 100).toFixed(0) : 0;
+                      
                       return (
                         <TableCell 
                           key={index} 
                           align="center"
-                          sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
+                          sx={{ fontSize: "0.75rem", padding: "8px 4px", borderTop: `2px solid ${alpha(theme.palette.warning.main, 0.2)}` }}
                         >
-                          {ioTarget > 0 ? (
-                            <Typography variant="caption" color="warning.main" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
+                          <Box>
+                            <Typography variant="body2" fontWeight={600} color="warning.main" sx={{ fontSize: "0.8rem", mb: 0.5 }}>
                               {formatCurrency(ioTarget)}
                             </Typography>
-                          ) : (
-                            <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.7rem" }}>
-                              -
-                            </Typography>
-                          )}
+                            {ioTarget > 0 && actual2025 > 0 && (
+                              <Typography variant="caption" color={progressPercent >= 100 ? "success.main" : "text.secondary"} sx={{ fontSize: "0.65rem", display: "block", fontWeight: 600 }}>
+                                {progressPercent}% atteint
+                              </Typography>
+                            )}
+                          </Box>
                         </TableCell>
                       );
                     })}
