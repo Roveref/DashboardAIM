@@ -1885,8 +1885,10 @@ const averageBookingSize2025Allocated = bookings2025.length > 0 ? bookings2025Al
 const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2025.some(item => item["Is Allocated"]);
 
 const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNetRevenue, theme }) => {
+  const [showTable, setShowTable] = useState(false);
+
   const toggleTable = () => {
-    setShowDetailsTable(!showDetailsTable);
+    setShowTable(!showTable);
   };
 
   // Fonction pour formater les montants
@@ -1950,16 +1952,9 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
           <Typography variant="h6" fontWeight={600}>
             Données détaillées par mois
           </Typography>
-          <Chip 
-            label={cumulativeData.length + " mois"}
-            size="small" 
-            color="primary" 
-            variant="outlined"
-            sx={{ ml: 1 }}
-          />
         </Box>
         
-        <MuiTooltip title={showDetailsTable ? "Masquer le tableau" : "Afficher le tableau"}>
+        <Tooltip title={showTable ? "Masquer le tableau" : "Afficher le tableau"}>
           <IconButton 
             onClick={toggleTable}
             sx={{
@@ -1969,13 +1964,13 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
               },
             }}
           >
-            {showDetailsTable ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            {showTable ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
-        </MuiTooltip>
+        </Tooltip>
       </Box>
 
       {/* Tableau collapsible */}
-      <Collapse in={showDetailsTable}>
+      <Collapse in={showTable}>
         <Box sx={{ p: 3 }}>
           <TableContainer sx={{ maxHeight: 600, overflow: "auto" }}>
             <Table stickyHeader size="small">
@@ -1987,7 +1982,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                       backgroundColor: theme.palette.grey[50],
                       position: "sticky",
                       left: 0,
-                      zIndex: 3,
+                      zIndex: 1,
                       minWidth: 120,
                     }}
                   >
@@ -2004,9 +1999,6 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                           fontWeight: 600, 
                           backgroundColor: alpha(theme.palette.primary.main, 0.1),
                           color: "primary.main",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 2,
                         }}
                       >
                         {year} - Mensuel
@@ -2020,9 +2012,6 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                           fontWeight: 600, 
                           backgroundColor: alpha(theme.palette.secondary.main, 0.1),
                           color: "secondary.main",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 2,
                         }}
                       >
                         {year} - Cumulé
@@ -2038,9 +2027,6 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                         fontWeight: 600, 
                         backgroundColor: alpha(theme.palette.warning.main, 0.1),
                         color: "warning.main",
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
                       }}
                     >
                       Objectif I&O
@@ -2050,138 +2036,43 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                 
                 {/* Sous-en-têtes */}
                 <TableRow>
-                  <TableCell 
-                    sx={{ 
-                      fontWeight: 600, 
-                      position: "sticky", 
-                      left: 0, 
-                      top: 57, 
-                      zIndex: 3, 
-                      backgroundColor: theme.palette.grey[50] 
-                    }}
-                  >
+                  <TableCell sx={{ fontWeight: 600, position: "sticky", left: 0, zIndex: 1, backgroundColor: theme.palette.grey[50] }}>
                     
                   </TableCell>
                   
                   {years.map(year => (
                     <React.Fragment key={`${year}-headers`}>
                       {/* Sous-en-têtes mensuels */}
-                      <TableCell 
-                        align="right" 
-                        sx={{ 
-                          fontWeight: 500, 
-                          fontSize: "0.8rem",
-                          position: "sticky",
-                          top: 57,
-                          zIndex: 2,
-                          backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                        }}
-                      >
+                      <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem" }}>
                         Total
                       </TableCell>
-                      <TableCell 
-                        align="right" 
-                        sx={{ 
-                          fontWeight: 500, 
-                          fontSize: "0.8rem", 
-                          color: "primary.main",
-                          position: "sticky",
-                          top: 57,
-                          zIndex: 2,
-                          backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                        }}
-                      >
+                      <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "primary.main" }}>
                         I&O
                       </TableCell>
                       {hasFiltersApplied && (
                         <>
-                          <TableCell 
-                            align="right" 
-                            sx={{ 
-                              fontWeight: 500, 
-                              fontSize: "0.8rem", 
-                              color: "secondary.main",
-                              position: "sticky",
-                              top: 57,
-                              zIndex: 2,
-                              backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                            }}
-                          >
+                          <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "secondary.main" }}>
                             Filtré
                           </TableCell>
-                          <TableCell 
-                            align="right" 
-                            sx={{ 
-                              fontWeight: 500, 
-                              fontSize: "0.8rem", 
-                              color: "secondary.main",
-                              position: "sticky",
-                              top: 57,
-                              zIndex: 2,
-                              backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                            }}
-                          >
+                          <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "secondary.main" }}>
                             I&O Filtré
                           </TableCell>
                         </>
                       )}
                       
                       {/* Sous-en-têtes cumulatifs */}
-                      <TableCell 
-                        align="right" 
-                        sx={{ 
-                          fontWeight: 500, 
-                          fontSize: "0.8rem",
-                          position: "sticky",
-                          top: 57,
-                          zIndex: 2,
-                          backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-                        }}
-                      >
+                      <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem" }}>
                         Total
                       </TableCell>
-                      <TableCell 
-                        align="right" 
-                        sx={{ 
-                          fontWeight: 500, 
-                          fontSize: "0.8rem", 
-                          color: "primary.main",
-                          position: "sticky",
-                          top: 57,
-                          zIndex: 2,
-                          backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-                        }}
-                      >
+                      <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "primary.main" }}>
                         I&O
                       </TableCell>
                       {hasFiltersApplied && (
                         <>
-                          <TableCell 
-                            align="right" 
-                            sx={{ 
-                              fontWeight: 500, 
-                              fontSize: "0.8rem", 
-                              color: "secondary.main",
-                              position: "sticky",
-                              top: 57,
-                              zIndex: 2,
-                              backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-                            }}
-                          >
+                          <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "secondary.main" }}>
                             Filtré
                           </TableCell>
-                          <TableCell 
-                            align="right" 
-                            sx={{ 
-                              fontWeight: 500, 
-                              fontSize: "0.8rem", 
-                              color: "secondary.main",
-                              position: "sticky",
-                              top: 57,
-                              zIndex: 2,
-                              backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-                            }}
-                          >
+                          <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "secondary.main" }}>
                             I&O Filtré
                           </TableCell>
                         </>
@@ -2190,18 +2081,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                   ))}
                   
                   {!hasFiltersApplied && (
-                    <TableCell 
-                      align="right" 
-                      sx={{ 
-                        fontWeight: 500, 
-                        fontSize: "0.8rem", 
-                        color: "warning.main",
-                        position: "sticky",
-                        top: 57,
-                        zIndex: 2,
-                        backgroundColor: alpha(theme.palette.warning.main, 0.05),
-                      }}
-                    >
+                    <TableCell align="right" sx={{ fontWeight: 500, fontSize: "0.8rem", color: "warning.main" }}>
                       Cumulé
                     </TableCell>
                   )}
@@ -2267,11 +2147,6 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                               <Typography variant="body2" fontWeight={monthlyTotal > 0 ? 600 : 400}>
                                 {formatCurrency(monthlyTotal)}
                               </Typography>
-                              {monthlyTotal > 0 && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  {(monthData[`${year}Opps`] || []).length} opps
-                                </Typography>
-                              )}
                             </TableCell>
                             <TableCell align="right">
                               <Typography 
@@ -2326,11 +2201,6 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                               <Typography variant="body2" fontWeight={cumulativeTotal > 0 ? 600 : 400}>
                                 {formatCurrency(cumulativeTotal)}
                               </Typography>
-                              {cumulativeTotal > 0 && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  {(monthData[`${year}Opps_cumulative`] || []).length} opps
-                                </Typography>
-                              )}
                             </TableCell>
                             <TableCell align="right">
                               <Typography 
