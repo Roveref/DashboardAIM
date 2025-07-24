@@ -1971,7 +1971,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
           >
             {showDetailsTable ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
-        </Tooltip>
+        </MuiTooltip>
       </Box>
 
       {/* Tableau collapsible */}
