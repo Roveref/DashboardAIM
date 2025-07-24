@@ -1513,7 +1513,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(data2024.filteredMonthly)}
+                      }).format(data2024.filteredMonthly)} ({((data2024.filteredMonthly / (data2024.ioRevenue + data2024.complementRevenue)) * 100).toFixed(0)}%)
                     </Typography>
                   )}
                   
@@ -1523,7 +1523,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(hasAllocation && data2024.filteredMonthly > 0 ? data2024.filteredMonthlyIO : data2024.ioRevenue)} ({hasAllocation && data2024.filteredMonthly > 0 ? ((data2024.filteredMonthlyIO / data2024.filteredMonthly) * 100).toFixed(0) : ((data2024.ioRevenue / (data2024.ioRevenue + data2024.complementRevenue)) * 100).toFixed(0)}%)
+                    }).format(hasAllocation && data2024.filteredMonthly > 0 ? data2024.filteredMonthlyIO : data2024.ioRevenue)} ({((hasAllocation && data2024.filteredMonthly > 0 ? data2024.filteredMonthlyIO : data2024.ioRevenue) / (data2024.ioRevenue + data2024.complementRevenue) * 100).toFixed(0)}%)
                   </Typography>
                   
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
@@ -1708,7 +1708,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   }
   return null;
 };
-
 
   // Add this useEffect to trigger the initial data processing and chart population
   useEffect(() => {
