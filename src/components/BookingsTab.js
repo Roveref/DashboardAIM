@@ -1059,6 +1059,8 @@ const BookingsTab = ({
   onSelection,
   selectedOpportunities,
   showNetRevenue = false,
+    filters = {},           // ← Ajoutez cette ligne
+  originalData = [],      // ← Et cette ligne
 }) => {
   const [yoyBookings, setYoyBookings] = useState([]);
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
@@ -1287,13 +1289,18 @@ const hasFiltersApplied = () => {
   // Vérifier s'il y a des filtres d'allocation (service line)
   const hasAllocationFilters = data.some(item => item["Is Allocated"]);
   
-  // Vérifier s'il y a des données filtrées vs données totales
-  // Si le nombre d'opportunités affichées est différent du nombre total, il y a un filtre
-  const totalOpportunities = data.length;
-  const displayedOpportunities = filteredOpportunities.length;
-  const hasSomeFilter = totalOpportunities !== displayedOpportunities;
+  // Vérifier s'il y a des filtres de segments
+  const hasSegmentFilters = (filters?.subSegmentCodes?.length > 0) || 
+                           (filters?.subSegments?.length > 0);
   
-  return hasAllocationFilters || hasSomeFilter;
+  // Vérifier s'il y a d'autres filtres actifs
+  const hasOtherFilters = (filters?.accounts?.length > 0) ||
+                         (filters?.status?.length > 0) ||
+                         (filters?.manager?.length > 0) ||
+                         (filters?.partner?.length > 0) ||
+                         (filters?.serviceOfferings?.length > 0);
+  
+  return hasAllocationFilters || hasSegmentFilters || hasOtherFilters;
 };
 
   // Custom tooltip for charts
