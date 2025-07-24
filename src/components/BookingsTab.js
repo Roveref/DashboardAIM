@@ -1291,7 +1291,7 @@ const CustomTooltip = ({ active, payload, label }) => {
     // Group entries by year
     const entriesByYear = {};
 
-    // Trouvez l'objectif I&O dans le payload
+    // Find the I&O target in the payload
     const ioTargetEntry = payload.find(entry => entry.dataKey === 'ioTarget');
 
     // First pass: organize data by year
@@ -1331,9 +1331,14 @@ const CustomTooltip = ({ active, payload, label }) => {
           color: entry.color,
           oppCount: 0,
           oppCountCumulative: 0,
-          // Nouveaux champs pour le split cumulative
+          // New fields for cumulative split
           cumulativeIO: 0,
           cumulativeComplement: 0,
+          // NEW: Add filtered values
+          filteredMonthly: 0,
+          filteredCumulative: 0,
+          filteredMonthlyIO: 0,
+          filteredCumulativeIO: 0,
         };
       }
 
@@ -1349,7 +1354,7 @@ const CustomTooltip = ({ active, payload, label }) => {
       }
     });
 
-    // Second pass: add opportunities count, calculate totals, and cumulative I&O split
+    // Second pass: add opportunities count, calculate totals, cumulative I&O split, and filtered values
     Object.keys(entriesByYear).forEach((year) => {
       const yearEntry = entriesByYear[year];
       
@@ -1372,6 +1377,70 @@ const CustomTooltip = ({ active, payload, label }) => {
         // Calculate cumulative complement (total - I&O)
         yearEntry.cumulativeComplement = Math.max(0, yearEntry.cumulative - yearEntry.cumulativeIO);
       }
+
+      // NEW: Calculate filtered values if allocation is applied
+      if (oppList.length > 0) {
+        // Calculate filtered monthly revenue
+        yearEntry.filteredMonthly = oppList.reduce((sum, opp) => {
+          if (opp["Is Allocated"]) {
+            return sum + (showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0));
+          } else {
+            return sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0));
+          }
+        }, 0);
+
+        // Calculate filtered monthly I&O revenue
+        yearEntry.filteredMonthlyIO = oppList.reduce((sum, opp) => {
+          if (opp["Is Allocated"]) {
+            // For allocated opportunities, calculate I&O on allocated amount
+            const allocatedRevenue = showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0);
+            // Apply segment logic proportionally
+            const originalRevenue = showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0);
+            const originalIO = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
+            if (originalRevenue > 0) {
+              return sum + (allocatedRevenue * (originalIO / originalRevenue));
+            }
+            return sum;
+          } else {
+            return sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue);
+          }
+        }, 0);
+      }
+
+      // Calculate filtered cumulative values
+      if (cumulativeOppList.length > 0) {
+        // Calculate filtered cumulative revenue
+        yearEntry.filteredCumulative = cumulativeOppList.reduce((sum, opp) => {
+          if (opp["Is Allocated"]) {
+            return sum + (showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0));
+          } else {
+            return sum + (showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0));
+          }
+        }, 0);
+
+        // Calculate filtered cumulative I&O revenue
+        yearEntry.filteredCumulativeIO = cumulativeOppList.reduce((sum, opp) => {
+          if (opp["Is Allocated"]) {
+            // For allocated opportunities, calculate I&O on allocated amount
+            const allocatedRevenue = showNetRevenue ? (opp["Allocated Net Revenue"] || 0) : (opp["Allocated Gross Revenue"] || 0);
+            // Apply segment logic proportionally
+            const originalRevenue = showNetRevenue ? (opp["Net Revenue"] || 0) : (opp["Gross Revenue"] || 0);
+            const originalIO = calculateRevenueWithSegmentLogic(opp, showNetRevenue);
+            if (originalRevenue > 0) {
+              return sum + (allocatedRevenue * (originalIO / originalRevenue));
+            }
+            return sum;
+          } else {
+            return sum + calculateRevenueWithSegmentLogic(opp, showNetRevenue);
+          }
+        }, 0);
+      }
+    });
+
+    // Check if any allocation is applied
+    const hasAllocation = Object.values(entriesByYear).some(yearEntry => {
+      const oppList = payload[0].payload[`${yearEntry.year}Opps`] || [];
+      return oppList.some(opp => opp["Is Allocated"]);
     });
 
     // Get sorted years and separate 2024/2025 data
@@ -1387,8 +1456,8 @@ const CustomTooltip = ({ active, payload, label }) => {
           borderColor: alpha(theme.palette.primary.main, 0.1),
           boxShadow: theme.shadows[3],
           borderRadius: 1,
-          minWidth: 380,
-          maxWidth: 380,
+          minWidth: hasAllocation ? 450 : 380, // Wider when showing filtered values
+          maxWidth: hasAllocation ? 450 : 380,
           fontFamily: 'Calibri, sans-serif',
         }}
       >
@@ -1396,7 +1465,7 @@ const CustomTooltip = ({ active, payload, label }) => {
           {label}
         </Typography>
 
-        {/* OBJECTIF I&O EN PREMIER */}
+        {/* I&O TARGET FIRST */}
         {ioTargetEntry && (
           <Box sx={{ 
             mb: 1, 
@@ -1416,32 +1485,48 @@ const CustomTooltip = ({ active, payload, label }) => {
           </Box>
         )}
 
-        {/* EN-TÊTES DES COLONNES */}
+        {/* COLUMN HEADERS */}
         <Grid container spacing={0.5} sx={{ mb: 0.5 }}>
-          <Grid item xs={6}>
+          <Grid item xs={hasAllocation ? 3 : 6}>
             <Typography variant="caption" fontWeight={700} textAlign="center" 
                        sx={{ color: data2024 ? data2024.color : theme.palette.text.secondary, fontSize: '0.8rem', fontFamily: 'Calibri, sans-serif' }}>
               2024
             </Typography>
           </Grid>
-          <Grid item xs={6}>
+          {hasAllocation && (
+            <Grid item xs={3}>
+              <Typography variant="caption" fontWeight={700} textAlign="center"
+                         sx={{ color: theme.palette.secondary.main, fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                2024 Filtered
+              </Typography>
+            </Grid>
+          )}
+          <Grid item xs={hasAllocation ? 3 : 6}>
             <Typography variant="caption" fontWeight={700} textAlign="center"
                        sx={{ color: data2025 ? data2025.color : theme.palette.text.secondary, fontSize: '0.8rem', fontFamily: 'Calibri, sans-serif' }}>
               2025
             </Typography>
           </Grid>
+          {hasAllocation && (
+            <Grid item xs={3}>
+              <Typography variant="caption" fontWeight={700} textAlign="center"
+                         sx={{ color: theme.palette.secondary.main, fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                2025 Filtered
+              </Typography>
+            </Grid>
+          )}
         </Grid>
 
         <Divider sx={{ mb: 1 }} />
 
-        {/* SECTION MENSUELLE */}
+        {/* MONTHLY SECTION */}
         <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
           Mensuel
         </Typography>
         
         <Grid container spacing={0.5} sx={{ mb: 1 }}>
-          {/* Colonne 2024 */}
-          <Grid item xs={6}>
+          {/* 2024 Column */}
+          <Grid item xs={hasAllocation ? 3 : 6}>
             <Box sx={{ 
               p: 0.5, 
               backgroundColor: alpha(data2024?.color || theme.palette.grey[500], 0.05),
@@ -1450,7 +1535,7 @@ const CustomTooltip = ({ active, payload, label }) => {
             }}>
               {data2024 ? (
                 <>
-                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1459,7 +1544,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2024.ioRevenue + data2024.complementRevenue)}
                   </Typography>
                   
-                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
                     I&O: {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1468,7 +1553,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2024.ioRevenue)} ({((data2024.ioRevenue / (data2024.ioRevenue + data2024.complementRevenue)) * 100).toFixed(0)}%)
                   </Typography>
                   
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.6rem', fontFamily: 'Calibri, sans-serif' }}>
                     {data2024.oppCount} opp.
                   </Typography>
                 </>
@@ -1480,8 +1565,46 @@ const CustomTooltip = ({ active, payload, label }) => {
             </Box>
           </Grid>
 
-          {/* Colonne 2025 */}
-          <Grid item xs={6}>
+          {/* 2024 Filtered Column */}
+          {hasAllocation && (
+            <Grid item xs={3}>
+              <Box sx={{ 
+                p: 0.5, 
+                backgroundColor: alpha(theme.palette.secondary.main, 0.05),
+                borderRadius: 0.5,
+                border: `1px solid ${alpha(theme.palette.secondary.main, 0.2)}`
+              }}>
+                {data2024 ? (
+                  <>
+                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2024.filteredMonthly)}
+                    </Typography>
+                    
+                    <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                      I&O: {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2024.filteredMonthlyIO)} ({data2024.filteredMonthly > 0 ? ((data2024.filteredMonthlyIO / data2024.filteredMonthly) * 100).toFixed(0) : 0}%)
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                    -
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
+
+          {/* 2025 Column */}
+          <Grid item xs={hasAllocation ? 3 : 6}>
             <Box sx={{ 
               p: 0.5, 
               backgroundColor: alpha(data2025?.color || theme.palette.grey[500], 0.05),
@@ -1490,7 +1613,7 @@ const CustomTooltip = ({ active, payload, label }) => {
             }}>
               {data2025 ? (
                 <>
-                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1499,7 +1622,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2025.ioRevenue + data2025.complementRevenue)}
                   </Typography>
                   
-                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
                     I&O: {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1508,7 +1631,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2025.ioRevenue)} ({((data2025.ioRevenue / (data2025.ioRevenue + data2025.complementRevenue)) * 100).toFixed(0)}%)
                   </Typography>
                   
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.6rem', fontFamily: 'Calibri, sans-serif' }}>
                     {data2025.oppCount} opp.
                   </Typography>
                 </>
@@ -1519,18 +1642,56 @@ const CustomTooltip = ({ active, payload, label }) => {
               )}
             </Box>
           </Grid>
+
+          {/* 2025 Filtered Column */}
+          {hasAllocation && (
+            <Grid item xs={3}>
+              <Box sx={{ 
+                p: 0.5, 
+                backgroundColor: alpha(theme.palette.secondary.main, 0.05),
+                borderRadius: 0.5,
+                border: `1px solid ${alpha(theme.palette.secondary.main, 0.2)}`
+              }}>
+                {data2025 ? (
+                  <>
+                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2025.filteredMonthly)}
+                    </Typography>
+                    
+                    <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                      I&O: {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2025.filteredMonthlyIO)} ({data2025.filteredMonthly > 0 ? ((data2025.filteredMonthlyIO / data2025.filteredMonthly) * 100).toFixed(0) : 0}%)
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                    -
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
         </Grid>
 
         <Divider sx={{ mb: 1 }} />
 
-        {/* SECTION CUMULATIVE */}
+        {/* CUMULATIVE SECTION */}
         <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
           Cumulé
         </Typography>
         
         <Grid container spacing={0.5}>
-          {/* Colonne 2024 Cumulé */}
-          <Grid item xs={6}>
+          {/* 2024 Cumulative Column */}
+          <Grid item xs={hasAllocation ? 3 : 6}>
             <Box sx={{ 
               p: 0.5, 
               backgroundColor: alpha(data2024?.cumulativeColor || data2024?.color || theme.palette.grey[500], 0.05),
@@ -1539,7 +1700,7 @@ const CustomTooltip = ({ active, payload, label }) => {
             }}>
               {data2024 && data2024.cumulative !== null ? (
                 <>
-                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1548,7 +1709,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2024.cumulative)}
                   </Typography>
                   
-                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
                     I&O: {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1557,7 +1718,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2024.cumulativeIO)} ({data2024.cumulative > 0 ? ((data2024.cumulativeIO / data2024.cumulative) * 100).toFixed(0) : 0}%)
                   </Typography>
                   
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.6rem', fontFamily: 'Calibri, sans-serif' }}>
                     {data2024.oppCountCumulative} opp.
                   </Typography>
                 </>
@@ -1569,8 +1730,46 @@ const CustomTooltip = ({ active, payload, label }) => {
             </Box>
           </Grid>
 
-          {/* Colonne 2025 Cumulé */}
-          <Grid item xs={6}>
+          {/* 2024 Filtered Cumulative Column */}
+          {hasAllocation && (
+            <Grid item xs={3}>
+              <Box sx={{ 
+                p: 0.5, 
+                backgroundColor: alpha(theme.palette.secondary.main, 0.05),
+                borderRadius: 0.5,
+                border: `1px dashed ${alpha(theme.palette.secondary.main, 0.4)}`
+              }}>
+                {data2024 && data2024.cumulative !== null ? (
+                  <>
+                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2024.filteredCumulative)}
+                    </Typography>
+                    
+                    <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                      I&O: {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2024.filteredCumulativeIO)} ({data2024.filteredCumulative > 0 ? ((data2024.filteredCumulativeIO / data2024.filteredCumulative) * 100).toFixed(0) : 0}%)
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                    -
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
+
+          {/* 2025 Cumulative Column */}
+          <Grid item xs={hasAllocation ? 3 : 6}>
             <Box sx={{ 
               p: 0.5, 
               backgroundColor: alpha(data2025?.cumulativeColor || data2025?.color || theme.palette.grey[500], 0.05),
@@ -1579,7 +1778,7 @@ const CustomTooltip = ({ active, payload, label }) => {
             }}>
               {data2025 && data2025.cumulative !== null ? (
                 <>
-                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
                     {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1588,7 +1787,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2025.cumulative)}
                   </Typography>
                   
-                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.7rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
                     I&O: {new Intl.NumberFormat("fr-FR", {
                       style: "currency",
                       currency: "EUR",
@@ -1597,7 +1796,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                     }).format(data2025.cumulativeIO)} ({data2025.cumulative > 0 ? ((data2025.cumulativeIO / data2025.cumulative) * 100).toFixed(0) : 0}%)
                   </Typography>
                   
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.6rem', fontFamily: 'Calibri, sans-serif' }}>
                     {data2025.oppCountCumulative} opp.
                   </Typography>
                 </>
@@ -1608,6 +1807,44 @@ const CustomTooltip = ({ active, payload, label }) => {
               )}
             </Box>
           </Grid>
+
+          {/* 2025 Filtered Cumulative Column */}
+          {hasAllocation && (
+            <Grid item xs={3}>
+              <Box sx={{ 
+                p: 0.5, 
+                backgroundColor: alpha(theme.palette.secondary.main, 0.05),
+                borderRadius: 0.5,
+                border: `1px dashed ${alpha(theme.palette.secondary.main, 0.4)}`
+              }}>
+                {data2025 && data2025.cumulative !== null ? (
+                  <>
+                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.2, display: 'block', fontSize: '0.68rem', fontFamily: 'Calibri, sans-serif' }}>
+                      {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2025.filteredCumulative)}
+                    </Typography>
+                    
+                    <Typography variant="caption" color="primary.main" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
+                      I&O: {new Intl.NumberFormat("fr-FR", {
+                        style: "currency",
+                        currency: "EUR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(data2025.filteredCumulativeIO)} ({data2025.filteredCumulative > 0 ? ((data2025.filteredCumulativeIO / data2025.filteredCumulative) * 100).toFixed(0) : 0}%)
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: '0.75rem', fontFamily: 'Calibri, sans-serif' }}>
+                    -
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
         </Grid>
       </Card>
     );
