@@ -1885,10 +1885,10 @@ const averageBookingSize2025Allocated = bookings2025.length > 0 ? bookings2025Al
 const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2025.some(item => item["Is Allocated"]);
 
 const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNetRevenue, theme }) => {
-  const [showTable, setShowTable] = useState(false);
+  const [showDetailsTable, setShowDetailsTable] = useState(false);
 
   const toggleTable = () => {
-    setShowTable(!showTable);
+    setShowDetailsTable(!showDetailsTable);
   };
 
   // Fonction pour formater les montants
@@ -1954,7 +1954,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
           </Typography>
         </Box>
         
-        <Tooltip title={showTable ? "Masquer le tableau" : "Afficher le tableau"}>
+        <MuiTooltip title={showDetailsTable ? "Masquer le tableau" : "Afficher le tableau"}>
           <IconButton 
             onClick={toggleTable}
             sx={{
@@ -1964,13 +1964,13 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
               },
             }}
           >
-            {showTable ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            {showDetailsTable ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
-        </Tooltip>
+        </MuiTooltip>
       </Box>
 
       {/* Tableau collapsible */}
-      <Collapse in={showTable}>
+      <Collapse in={showDetailsTable}>
         <Box sx={{ p: 3 }}>
           <TableContainer sx={{ maxHeight: 600, overflow: "auto" }}>
             <Table stickyHeader size="small">
