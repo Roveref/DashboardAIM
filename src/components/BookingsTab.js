@@ -32,6 +32,7 @@ import {
   TableCell,
   IconButton,
   Chip,
+  Tooltip as MuiTooltip,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -98,7 +99,6 @@ const TopAccountsSection = ({ data, dateRange, showNetRevenue = false }) => {
   const [specialSegmentBookingsTotal, setSpecialSegmentBookingsTotal] =
     useState(0);
   const [specialSegmentIOTotal, setSpecialSegmentIOTotal] = useState(0);
-const [showDetailsTable, setShowDetailsTable] = useState(false);
 
   // Target amount in euros for I&O
   const IO_TARGET = 1000000; // 1 million euros
@@ -1071,6 +1071,7 @@ const BookingsTab = ({
   const [bookingsByServiceLine, setBookingsByServiceLine] = useState([]);
   const [totalBookings, setTotalBookings] = useState(0);
   const [filteredOpportunities, setFilteredOpportunities] = useState([]);
+const [showDetailsTable, setShowDetailsTable] = useState(false);
 
   // Set default date range to January 1st of current year to today
   const currentYear = new Date().getFullYear();
@@ -1958,7 +1959,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
           />
         </Box>
         
-        <Tooltip title={showDetailsTable ? "Masquer le tableau" : "Afficher le tableau"}>
+        <MuiTooltip title={showDetailsTable ? "Masquer le tableau" : "Afficher le tableau"}>
           <IconButton 
             onClick={toggleTable}
             sx={{
