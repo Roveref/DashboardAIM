@@ -1283,6 +1283,10 @@ const BookingsTab = ({
     }
   };
 
+  const hasFiltersApplied = () => {
+  return data.some(item => item["Is Allocated"]);
+};
+
   // Custom tooltip for charts
 // Custom tooltip complet pour le graphique
 // Custom tooltip avec affichage en colonnes 2024 | 2025
@@ -2558,21 +2562,23 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
     })}
 
     {/* LIGNE D'OBJECTIF I&O - APRÈS LA BOUCLE DES ANNÉES */}
-    <Line
-      yAxisId="cumulative"
-      type="monotone"
-      dataKey="ioTarget"
-      name="2025 I&O Target"
-      stroke="#FF6B35"
-      strokeWidth={2}
-      strokeDasharray="8 8"
-      dot={{
-        fill: "#FF6B35",
-        stroke: "#FF6B35",
-        strokeWidth: 2,
-        r: 3
-      }}
-    />
+   {!hasFiltersApplied() && (
+  <Line
+    yAxisId="cumulative"
+    type="monotone"
+    dataKey="ioTarget"
+    name="2025 I&O Target"
+    stroke="#FF6B35"
+    strokeWidth={2}
+    strokeDasharray="8 8"
+    dot={{
+      fill: "#FF6B35",
+      stroke: "#FF6B35",
+      strokeWidth: 2,
+      r: 3
+    }}
+  />
+)}
   </ComposedChart>
 </ResponsiveContainer>
           </Paper>
