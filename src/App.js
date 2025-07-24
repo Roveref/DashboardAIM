@@ -1497,6 +1497,8 @@ function App() {
                       onSelection={handleSelection}
                       selectedOpportunities={selectedOpportunities}
                       showNetRevenue={showNetRevenue}
+                      filters={filters}              // ← Ajoutez cette ligne
+                      originalData={opportunityData}  // ← Et cette ligne
                     />
                   )}
                   {activeTab === 2 && (
