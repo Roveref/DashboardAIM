@@ -2005,8 +2005,8 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                       position: "sticky",
                       left: 0,
                       zIndex: 2,
-                      minWidth: 140,
-                      fontSize: "0.85rem"
+                      minWidth: 110,
+                      fontSize: "0.75rem"
                     }}
                   >
                     Type de données
@@ -2266,7 +2266,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                           zIndex: 1,
                           backgroundColor: alpha(theme.palette.secondary.main, 0.1),
                           color: "secondary.main",
-                          fontSize: "0.85rem",
+                          fontSize: "0.75rem",
                           borderBottom: `2px solid ${alpha(theme.palette.secondary.main, 0.2)}`
                         }}
                       >
@@ -2316,7 +2316,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                           zIndex: 1,
                           backgroundColor: alpha(theme.palette.secondary.main, 0.05),
                           color: "secondary.main",
-                          fontSize: "0.85rem",
+                          fontSize: "0.75rem",
                           pl: 3
                         }}
                       >
@@ -2409,7 +2409,6 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
     </Paper>
   );
 };
-
   return (
     <Fade in={!loading} timeout={500}>
       <Box sx={{ width: "100%" }}>
