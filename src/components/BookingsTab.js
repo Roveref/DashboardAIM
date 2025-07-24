@@ -2409,6 +2409,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
     </Paper>
   );
 };
+
   return (
     <Fade in={!loading} timeout={500}>
       <Box sx={{ width: "100%" }}>
