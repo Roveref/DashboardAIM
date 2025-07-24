@@ -1565,7 +1565,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(data2025.filteredMonthly)}
+                      }).format(data2025.filteredMonthly)} ({((data2025.filteredMonthly / (data2025.ioRevenue + data2025.complementRevenue)) * 100).toFixed(0)}%)
                     </Typography>
                   )}
                   
@@ -1575,7 +1575,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(hasAllocation && data2025.filteredMonthly > 0 ? data2025.filteredMonthlyIO : data2025.ioRevenue)} ({hasAllocation && data2025.filteredMonthly > 0 ? ((data2025.filteredMonthlyIO / data2025.filteredMonthly) * 100).toFixed(0) : ((data2025.ioRevenue / (data2025.ioRevenue + data2025.complementRevenue)) * 100).toFixed(0)}%)
+                    }).format(hasAllocation && data2025.filteredMonthly > 0 ? data2025.filteredMonthlyIO : data2025.ioRevenue)} ({((hasAllocation && data2025.filteredMonthly > 0 ? data2025.filteredMonthlyIO : data2025.ioRevenue) / (data2025.ioRevenue + data2025.complementRevenue) * 100).toFixed(0)}%)
                   </Typography>
                   
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
@@ -1626,7 +1626,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(data2024.filteredCumulative)}
+                      }).format(data2024.filteredCumulative)} ({((data2024.filteredCumulative / data2024.cumulative) * 100).toFixed(0)}%)
                     </Typography>
                   )}
                   
@@ -1636,7 +1636,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(hasAllocation && data2024.filteredCumulative > 0 ? data2024.filteredCumulativeIO : data2024.cumulativeIO)} ({hasAllocation && data2024.filteredCumulative > 0 ? ((data2024.filteredCumulativeIO / data2024.filteredCumulative) * 100).toFixed(0) : (data2024.cumulative > 0 ? ((data2024.cumulativeIO / data2024.cumulative) * 100).toFixed(0) : 0)}%)
+                    }).format(hasAllocation && data2024.filteredCumulative > 0 ? data2024.filteredCumulativeIO : data2024.cumulativeIO)} ({((hasAllocation && data2024.filteredCumulative > 0 ? data2024.filteredCumulativeIO : data2024.cumulativeIO) / data2024.cumulative * 100).toFixed(0)}%)
                   </Typography>
                   
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
@@ -1678,7 +1678,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                         currency: "EUR",
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(data2025.filteredCumulative)}
+                      }).format(data2025.filteredCumulative)} ({((data2025.filteredCumulative / data2025.cumulative) * 100).toFixed(0)}%)
                     </Typography>
                   )}
                   
@@ -1688,7 +1688,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                       currency: "EUR",
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(hasAllocation && data2025.filteredCumulative > 0 ? data2025.filteredCumulativeIO : data2025.cumulativeIO)} ({hasAllocation && data2025.filteredCumulative > 0 ? ((data2025.filteredCumulativeIO / data2025.filteredCumulative) * 100).toFixed(0) : (data2025.cumulative > 0 ? ((data2025.cumulativeIO / data2025.cumulative) * 100).toFixed(0) : 0)}%)
+                    }).format(hasAllocation && data2025.filteredCumulative > 0 ? data2025.filteredCumulativeIO : data2025.cumulativeIO)} ({((hasAllocation && data2025.filteredCumulative > 0 ? data2025.filteredCumulativeIO : data2025.cumulativeIO) / data2025.cumulative * 100).toFixed(0)}%)
                   </Typography>
                   
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: '0.65rem', fontFamily: 'Calibri, sans-serif' }}>
