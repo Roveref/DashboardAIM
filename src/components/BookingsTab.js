@@ -1283,8 +1283,17 @@ const BookingsTab = ({
     }
   };
 
-  const hasFiltersApplied = () => {
-  return data.some(item => item["Is Allocated"]);
+const hasFiltersApplied = () => {
+  // Vérifier s'il y a des filtres d'allocation (service line)
+  const hasAllocationFilters = data.some(item => item["Is Allocated"]);
+  
+  // Vérifier s'il y a des données filtrées vs données totales
+  // Si le nombre d'opportunités affichées est différent du nombre total, il y a un filtre
+  const totalOpportunities = data.length;
+  const displayedOpportunities = filteredOpportunities.length;
+  const hasSomeFilter = totalOpportunities !== displayedOpportunities;
+  
+  return hasAllocationFilters || hasSomeFilter;
 };
 
   // Custom tooltip for charts
