@@ -1887,26 +1887,19 @@ const hasAllocation = bookings2025.some(item => item["Is Allocated"]) || losses2
 const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNetRevenue, theme }) => {
   const [showDetailsTable, setShowDetailsTable] = useState(false);
 
-  // Maintenir l'état ouvert si des filtres sont appliqués
-  useEffect(() => {
-    if (hasFiltersApplied && !showDetailsTable) {
-      setShowDetailsTable(true);
-    }
-  }, [hasFiltersApplied]);
-
   const toggleTable = () => {
     setShowDetailsTable(!showDetailsTable);
   };
 
-  // Fonction pour formater les montants de manière compacte
+  // Fonction pour formater les montants complets
   const formatCurrency = (amount) => {
-    if (amount === 0) return "0";
-    if (amount >= 1000000) {
-      return `${(amount / 1000000).toFixed(1)}M€`;
-    } else if (amount >= 1000) {
-      return `${(amount / 1000).toFixed(0)}k€`;
-    }
-    return `${amount.toFixed(0)}€`;
+    if (amount === 0) return "-";
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
   };
 
   // Fonction pour calculer les valeurs filtrées
@@ -2013,9 +2006,9 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                             ? alpha(theme.palette.info.main, 0.1)
                             : theme.palette.grey[50],
                           color: isCurrentMonth ? "info.main" : "text.primary",
-                          minWidth: 80,
+                          minWidth: 100,
                           fontSize: "0.75rem",
-                          padding: "8px 4px"
+                          padding: "8px 6px"
                         }}
                       >
                         <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -2060,7 +2053,7 @@ const MonthlyDetailsTable = ({ cumulativeData, years, hasFiltersApplied, showNet
                           <TableCell 
                             key={index} 
                             align="center"
-                            sx={{ fontSize: "0.75rem", padding: "4px 2px" }}
+                            sx={{ fontSize: "0.75rem", padding: "6px 4px" }}
                           >
                             {monthlyTotal > 0 ? (
                               <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.7rem" }}>
